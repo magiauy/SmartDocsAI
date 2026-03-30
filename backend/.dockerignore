@@ -1,0 +1,6 @@
+.venv
+__pycache__
+.pytest_cache
+media
+db.sqlite3
+build.log
