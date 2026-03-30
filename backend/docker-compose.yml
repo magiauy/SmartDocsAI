@@ -1,0 +1,59 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - qdrant
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A app worker -l info
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    depends_on:
+      - redis
+      - qdrant
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  mysql:
+    image: mysql:8.4
+    profiles:
+      - mysql
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-smartdocsai}
+      MYSQL_USER: ${DB_USER:-smartdocs}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-smartdocs}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  qdrant_storage:
+  mysql_data:
