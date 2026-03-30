@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "apps.core.apps.CoreConfig",
     "apps.documents.apps.DocumentsConfig",
     "apps.chat.apps.ChatConfig",
+    "apps.demo.apps.DemoConfig",
     "apps.llm.apps.LLMConfig",
     "apps.retrieval.apps.RetrievalConfig",
     "apps.jobs.apps.JobsConfig",

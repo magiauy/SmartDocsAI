@@ -1,0 +1,110 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartDocsAI Demo</title>
+  <link rel="stylesheet" href="{% static 'demo/demo.css' %}">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Backend Demo</p>
+        <h1>SmartDocsAI Demo</h1>
+        <p class="hero-copy">
+          Upload documents, create a conversation, wait for bootstrap summaries, and send questions against the scaffolded backend.
+        </p>
+      </div>
+      <div class="hero-status">
+        <span class="pill" id="connection-pill">Idle</span>
+        <button class="ghost-button" id="refresh-documents-button" type="button">Refresh Documents</button>
+      </div>
+    </header>
+
+    <section class="layout-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Document Upload</h2>
+          <p>Select one or more files to push through the upload endpoint.</p>
+        </div>
+        <form id="upload-form" class="stack">
+          <label class="upload-dropzone" for="file-input">
+            <input id="file-input" name="files" type="file" multiple>
+            <span>Choose files</span>
+            <small>Supports multi-file upload via <code>/api/documents/upload/</code></small>
+          </label>
+          <button class="primary-button" type="submit">Upload Files</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Documents Ready</h2>
+          <p>Pick which uploaded documents should be attached to the next conversation.</p>
+        </div>
+        <div id="documents-list" class="document-list empty-state">
+          No documents loaded yet.
+        </div>
+      </section>
+    </section>
+
+    <section class="layout-grid layout-grid-bottom">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Conversation Setup</h2>
+          <p>Create a conversation with the selected provider and documents.</p>
+        </div>
+        <form id="conversation-form" class="stack">
+          <label>
+            <span>Title</span>
+            <input id="conversation-title" name="title" type="text" value="Demo Conversation">
+          </label>
+          <div class="field-row">
+            <label>
+              <span>Provider</span>
+              <select id="provider-select" name="provider">
+                <option value="mock">mock</option>
+                <option value="gemini">gemini</option>
+                <option value="ollama">ollama</option>
+              </select>
+            </label>
+            <label>
+              <span>Model</span>
+              <input id="model-input" name="model" type="text" value="mock-1">
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Create Conversation</button>
+        </form>
+        <div id="conversation-status-card" class="status-card">
+          <strong>No active conversation.</strong>
+          <p>Create one after choosing documents.</p>
+        </div>
+      </section>
+
+      <section class="panel chat-panel">
+        <div class="panel-head">
+          <h2>Chat Console</h2>
+          <p>The bootstrap summary appears here once the conversation becomes ready.</p>
+        </div>
+        <div id="chat-messages" class="chat-messages empty-state">No messages yet.</div>
+        <form id="chat-form" class="chat-form">
+          <textarea id="chat-input" rows="3" placeholder="Ask a question once the conversation is ready..."></textarea>
+          <button class="primary-button" type="submit">Send</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="panel-head">
+        <h2>Response / Status</h2>
+        <p>Useful for inspecting raw payloads while demoing the backend.</p>
+      </div>
+      <pre id="response-log">Ready.</pre>
+    </section>
+  </main>
+
+  <script src="{% static 'demo/demo.js' %}"></script>
+</body>
+</html>

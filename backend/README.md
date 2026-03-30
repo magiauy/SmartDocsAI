@@ -26,3 +26,12 @@ Copy-Item .env.example .env
 docker compose up web worker redis qdrant
 docker compose --profile mysql up
 ```
+
+## Demo Page
+
+Start the Django server, then open `/demo/` to access the browser demo for:
+
+- multi-file document upload
+- conversation creation
+- bootstrap summary polling
+- chat requests against the current backend APIs
