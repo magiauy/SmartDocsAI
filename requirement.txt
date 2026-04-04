@@ -1,0 +1,2 @@
+# Packages required to run the Streamlit frontend app
+streamlit>=1.32.0,<2.0.0
