@@ -1,0 +1,481 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    color-scheme: light !important;
+    --bg-app: #f5f7fb;
+    --bg-surface: #ffffff;
+    --bg-soft: #f8faff;
+    --bg-muted: #e8edf5;
+    --text-1: #152238;
+    --text-2: #334a68;
+    --text-3: #6b7d96;
+    --line: #dfe5ef;
+    --line-strong: #cfd7e6;
+    --primary: #2563eb;
+    --primary-soft: rgba(37, 99, 235, 0.1);
+    --secondary: #ffb020;
+    --sidebar-bg: #ffffff;
+    --sidebar-text: #152238;
+    --radius-lg: 18px;
+    --radius-md: 14px;
+    --shadow-sm: 0 2px 10px rgba(17, 24, 39, 0.04);
+    --shadow-md: 0 10px 28px rgba(17, 24, 39, 0.08);
+}
+
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+    color-scheme: light !important;
+    background: var(--bg-app) !important;
+    color: var(--text-1) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        color-scheme: light !important;
+        background: var(--bg-app) !important;
+        color: var(--text-1) !important;
+    }
+}
+
+header[data-testid="stHeader"] {
+    display: none;
+}
+
+[data-testid="stSidebar"] {
+    display: none !important;
+}
+
+.block-container {
+    padding-top: 16px;
+    padding-bottom: 20px;
+    max-width: 100%;
+    padding-left: 24px;
+    padding-right: 24px;
+}
+
+[data-testid="stAppViewContainer"] {
+    background: var(--bg-app) !important;
+}
+
+/* Streamlit limitation: HTML tags can't wrap widgets across blocks.
+   We style the Streamlit container that *contains* a marker element. */
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) {
+    background: var(--sidebar-bg);
+    border: none;
+    border-radius: 20px;
+    padding: 18px;
+    min-height: calc(100vh - 64px);
+    color: var(--sidebar-text);
+    position: sticky;
+    top: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+
+/* Left panel internal layout */
+.left-panel-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker).empty-mode {
+    margin-top: clamp(18px, 16vh, 150px);
+}
+
+#lp_title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--sidebar-text);
+}
+
+#lp_subtitle {
+    font-size: 0.82rem;
+    color: var(--text-3);
+    margin-top: 2px;
+    margin-bottom: 16px;
+}
+
+/* "Sources area" container (uploader + helper text). */
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-testid="stVerticalBlock"]:has(#lp_sources_area_marker) {
+    border: none;
+    border-radius: 14px;
+    background: transparent;
+    padding: 10px 12px 8px;
+    box-shadow: none !important;
+}
+
+.left-panel-section-label {
+    font-size: 0.82rem;
+    color: var(--text-3);
+    margin-top: 14px;
+    margin-bottom: 8px;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] small {
+    display: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] label {
+    display: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] section {
+    background: #ffffff !important;
+    border: none !important;
+    border-radius: 16px !important;
+    padding: 10px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 6px 18px rgba(17, 24, 39, 0.06) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] section:hover {
+    background: #f7faff !important;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.10) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] section > div {
+    gap: 8px !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] button {
+    width: 100% !important;
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    border: 1px solid #1d4ed8 !important;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+    min-height: 42px !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] button:hover {
+    background: #1d4ed8 !important;
+    border-color: #1e40af !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stFileUploader"] button:active {
+    background: #1e40af !important;
+}
+
+#lp_upload_helper .upload-helper {
+    font-size: 0.78rem;
+    color: var(--text-3);
+    line-height: 1.5;
+    margin-top: 6px;
+    margin-bottom: 10px;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stButton"] button {
+    background: #f8fbff !important;
+    color: var(--text-2) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stButton"] button:hover {
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: var(--primary-soft) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-testid="stSelectbox"] > div {
+    width: 100%;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] {
+    width: 100% !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] > div {
+    min-height: 46px !important;
+    background: #f8fbff !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 12px !important;
+    color: var(--text-1) !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] > div:hover {
+    border-color: var(--line-strong) !important;
+    background: #f5f9ff !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] > div:focus-within {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] input {
+    color: var(--text-1) !important;
+    font-weight: 500 !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] span {
+    color: var(--text-1) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) div[data-baseweb="select"] svg {
+    fill: var(--text-3) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) [data-baseweb="popover"] {
+    color: var(--text-1) !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) .source-card {
+    background: #f9fbff;
+    border: none;
+    box-shadow: 0 6px 14px rgba(17, 24, 39, 0.04);
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) .source-name {
+    color: var(--text-1);
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) .source-meta {
+    color: var(--text-3);
+}
+
+div[data-testid="stVerticalBlock"]:has(#lp_root_marker) .source-icon {
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.nb-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.nb-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-1);
+    letter-spacing: -0.02em;
+}
+
+.nb-subtitle {
+    font-size: 0.92rem;
+    color: var(--text-3);
+    margin-top: 4px;
+}
+
+.nb-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+}
+
+.guide-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.guide-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-1);
+    margin-bottom: 8px;
+}
+
+.guide-content {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text-2);
+}
+
+.suggested-questions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 13px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #f7faff;
+    color: var(--text-2);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chip:hover {
+    background: #eef4ff;
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.source-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.source-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.source-name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.source-meta {
+    font-size: 0.8rem;
+    color: var(--text-3);
+}
+
+[data-testid="stChatMessage"] {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 18px !important;
+    padding: 10px 12px !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+[data-testid="stChatInput"] {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 8px 20px rgba(17, 24, 39, 0.06) !important;
+}
+
+[data-testid="stChatInput"] textarea {
+    color: var(--text-1) !important;
+    background: transparent !important;
+}
+
+.studio-card {
+    background: #fbfdff;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+
+.studio-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-1);
+    margin-bottom: 10px;
+}
+
+.studio-item {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: #ffffff;
+    transition: all 0.2s ease;
+}
+
+.studio-item:hover {
+    border-color: var(--primary);
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.1);
+    transform: translateY(-1px);
+}
+
+.studio-item-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-1);
+    margin-bottom: 4px;
+}
+
+.studio-item-desc {
+    font-size: 0.82rem;
+    color: var(--text-3);
+    line-height: 1.5;
+}
+
+.empty-box {
+    width: 100%;
+    max-width: 700px;
+    text-align: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    padding: 36px 28px;
+    box-shadow: var(--shadow-md);
+}
+
+.empty-main {
+    min-height: calc(100vh - 64px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.empty-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-1);
+    margin-bottom: 8px;
+}
+
+.empty-desc {
+    color: var(--text-2);
+    line-height: 1.6;
+}
+
+@media (max-width: 1024px) {
+    .nb-title {
+        font-size: 1.3rem;
+    }
+
+    div[data-testid="stVerticalBlock"]:has(#lp_root_marker) {
+        min-height: auto;
+        position: relative;
+        top: 0;
+    }
+
+    div[data-testid="stVerticalBlock"]:has(#lp_root_marker).empty-mode {
+        margin-top: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+    .guide-card,
+    .studio-card,
+    .nb-card,
+    .left-panel {
+        padding: 16px;
+    }
+
+    .empty-box {
+        padding: 32px 20px;
+    }
+}

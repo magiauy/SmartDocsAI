@@ -4,339 +4,181 @@ from pathlib import Path
 
 import streamlit as st
 
-
 FRONTEND_DIR = Path(__file__).resolve().parent
 PAGE_ICON_PATH = FRONTEND_DIR / "assets" / "google-docs.png"
+UI_DIR = FRONTEND_DIR / "ui"
+CSS_PATH = UI_DIR / "styles.css"
+TEMPLATES_DIR = UI_DIR / "templates"
 
 
 def init_state() -> None:
-	if "document_ready" not in st.session_state:
-		st.session_state.document_ready = False
-	if "processed_file_name" not in st.session_state:
-		st.session_state.processed_file_name = ""
-	if "chat_history" not in st.session_state:
-		st.session_state.chat_history = []
+    if "document_ready" not in st.session_state:
+        st.session_state.document_ready = False
+    if "processed_file_name" not in st.session_state:
+        st.session_state.processed_file_name = ""
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "sources" not in st.session_state:
+        st.session_state.sources = []
 
 
 def build_answer(question: str, file_name: str, model_name: str) -> str:
-	return (
-		f"Tai lieu '{file_name}' da duoc phan tich. "
-		f"Cau hoi: '{question}'. "
-		f"Cau tra loi demo duoc tao boi {model_name}: "
-		"He thong se trich xuat cac doan lien quan tu PDF, tong hop noi dung, "
-		"va tra ve cau tra loi gon gang de ban co the tiep tuc hoi them."
-	)
+    return (
+        f"Dựa trên tài liệu '{file_name}', đây là thông tin cho câu hỏi: '{question}'.\n\n"
+        f"Phản hồi này được tạo bởi **{model_name}**. "
+        "Hệ thống đã trích xuất các phần liên quan từ tài liệu, "
+        "tổng hợp nội dung để cung cấp một câu trả lời chính xác và ngắn gọn "
+        "trực tiếp vào trọng tâm vấn đề bạn đang nghiên cứu."
+    )
+
+
+def load_template(name: str, **kwargs: str) -> str:
+    content = (TEMPLATES_DIR / name).read_text(encoding="utf-8")
+    return content.format(**kwargs) if kwargs else content
+
+
+def inject_styles() -> None:
+    css = CSS_PATH.read_text(encoding="utf-8")
+    st.markdown(f"<style>\n{css}\n</style>", unsafe_allow_html=True)
 
 
 st.set_page_config(
-	page_title="SmartDocsAI - Document Q&A",
-	page_icon=str(PAGE_ICON_PATH) if PAGE_ICON_PATH.exists() else None,
-	layout="wide",
-	initial_sidebar_state="expanded",
+    page_title="NotebookLM AI",
+    page_icon=str(PAGE_ICON_PATH) if PAGE_ICON_PATH.exists() else None,
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 init_state()
+inject_styles()
 
-st.markdown(
-	"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
-:root {
-	--primary: #007BFF;
-	--secondary: #FFC107;
-	--bg: #F8F9FA;
-	--sidebar-bg: #2C2F33;
-	--text-main: #212529;
-	--text-sidebar: #FFFFFF;
-	--surface: #FFFFFF;
-	--muted-border: #DDE2E7;
-}
+def render_left_panel(empty_mode: bool = False) -> str:
+    model_name = st.session_state.get("left_panel_model_select", "gemini-1.5-pro")
+    with st.container():
+        st.markdown('<div id="lp_root_marker"></div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div id="lp_title">NotebookLM</div>
+            <div id="lp_subtitle">Sources</div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-html, body, [class*="css"] {
-	font-family: 'IBM Plex Sans', sans-serif;
-}
+        # Sources box (uploader + list)
+        with st.container():
+            st.markdown('<div id="lp_sources_area_marker"></div>', unsafe_allow_html=True)
+            uploaded_file = st.file_uploader(
+                "Add source",
+                type=["pdf", "txt", "md", "docx"],
+                label_visibility="collapsed",
+                key="left_panel_uploader",
+            )
+            st.markdown('<div id="lp_upload_helper">', unsafe_allow_html=True)
+            st.markdown(load_template("upload_helper.html"), unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-[data-testid="stAppViewContainer"] {
-	background: radial-gradient(circle at 2% 1%, #FFFFFF, var(--bg) 48%);
-}
+    if uploaded_file is not None and uploaded_file.name not in [s["name"] for s in st.session_state.sources]:
+        with st.spinner("Processing document..."):
+            time.sleep(1.2)
+            st.session_state.sources.append({
+                "name": uploaded_file.name,
+                "type": uploaded_file.type,
+            })
+            st.session_state.document_ready = True
+            st.session_state.processed_file_name = uploaded_file.name
+            st.rerun()
 
-[data-testid="stSidebar"] {
-	background-color: var(--sidebar-bg);
-	border-right: 1px solid #444B52;
-}
+        st.markdown('<div id="lp_sources_list_marker"></div>', unsafe_allow_html=True)
+        if not st.session_state.sources:
+            st.markdown(load_template("no_sources.html"), unsafe_allow_html=True)
+        else:
+            for source in st.session_state.sources:
+                escaped_name = html.escape(source["name"])
+                st.markdown(load_template("source_card.html", source_name=escaped_name), unsafe_allow_html=True)
 
-[data-testid="stSidebar"] * {
-	color: var(--text-sidebar);
-}
+        # Model + actions
+        st.markdown('<div id="lp_model_area_marker"></div>', unsafe_allow_html=True)
+        st.markdown(load_template("model_label.html"), unsafe_allow_html=True)
 
-[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"] {
-	background-color: var(--primary);
-}
+        model_name = st.selectbox(
+            "LLM Model",
+            ["gemini-1.5-pro", "gemini-1.5-flash", "gpt-4o", "claude-3.5-sonnet"],
+            label_visibility="collapsed",
+            key="left_panel_model_select",
+        )
 
-[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
-	background-color: #3A3E44;
-	border-color: #545B63;
-}
+        if st.button("Clear chat", use_container_width=True, key="left_panel_clear_chat"):
+            st.session_state.chat_history = []
+            st.rerun()
 
-[data-testid="stSidebar"] .stSelectbox svg,
-[data-testid="stSidebar"] .stSelectbox span {
-	color: var(--text-sidebar);
-}
+    # Apply empty-mode spacing on the styled container (CSS targets this class)
+    if empty_mode:
+        st.markdown(
+            "<script>document.currentScript?.closest('[data-testid=\"stVerticalBlock\"]').classList.add('empty-mode');</script>",
+            unsafe_allow_html=True,
+        )
 
-.sidebar-card {
-	background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
-	border: 1px solid rgba(255, 255, 255, 0.14);
-	border-radius: 12px;
-	padding: 14px;
-	margin-bottom: 14px;
-}
+    return model_name
 
-.sidebar-card h3 {
-	font-family: 'Sora', sans-serif;
-	margin: 0 0 10px 0;
-	font-size: 1rem;
-}
 
-.sidebar-list {
-	margin: 0;
-	padding-left: 18px;
-	line-height: 1.5;
-	font-size: 0.93rem;
-}
+if not st.session_state.document_ready:
+    left, main = st.columns([1.05, 3.2], gap="large")
 
-.hero {
-	background: linear-gradient(120deg, rgba(0, 123, 255, 0.14), rgba(255, 193, 7, 0.2));
-	border: 1px solid var(--muted-border);
-	border-radius: 16px;
-	padding: 18px 22px;
-	margin-bottom: 18px;
-}
+    with left:
+        render_left_panel(empty_mode=True)
 
-.hero h1 {
-	margin: 0;
-	color: var(--text-main);
-	font-family: 'Sora', sans-serif;
-	font-size: clamp(1.4rem, 2.2vw, 2rem);
-}
+    with main:
+        st.markdown(load_template("empty_topbar.html"), unsafe_allow_html=True)
+        st.markdown(load_template("empty_state.html"), unsafe_allow_html=True)
 
-.hero p {
-	margin: 8px 0 0;
-	color: #3A4047;
-}
-
-.section-title {
-	font-family: 'Sora', sans-serif;
-	color: var(--text-main);
-	font-size: 1.05rem;
-	margin-top: 8px;
-	margin-bottom: 8px;
-}
-
-.status-chip {
-	display: inline-block;
-	border-radius: 999px;
-	padding: 4px 10px;
-	font-weight: 600;
-	font-size: 0.85rem;
-	margin-bottom: 8px;
-}
-
-.status-ready {
-	color: #0B6E00;
-	background: #D9F5D1;
-}
-
-.status-waiting {
-	color: #8A5A00;
-	background: #FFF3CD;
-}
-
-[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {
-	border: 1.5px dashed #B7BEC7;
-	background: #FFFFFF;
-	border-radius: 14px;
-}
-
-[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {
-	background-color: var(--secondary) !important;
-	color: var(--text-main) !important;
-	border: 1px solid #E0AE00 !important;
-	border-radius: 10px !important;
-	font-weight: 700 !important;
-}
-
-[data-testid="stButton"] button[kind="primary"] {
-	background-color: var(--primary);
-	color: #FFFFFF;
-	border: 1px solid #0068D6;
-	border-radius: 10px;
-	font-weight: 700;
-}
-
-[data-testid="stButton"] button[kind="secondary"] {
-	background-color: var(--secondary);
-	color: var(--text-main);
-	border: 1px solid #E0AE00;
-	border-radius: 10px;
-	font-weight: 700;
-}
-
-[data-testid="stTextInput"] input {
-	border-radius: 10px;
-	border: 1px solid #CBD3DB;
-}
-
-.qa-card {
-	background: var(--surface);
-	border: 1px solid var(--muted-border);
-	border-left: 5px solid var(--primary);
-	border-radius: 12px;
-	padding: 12px 14px;
-	margin-bottom: 10px;
-}
-
-.qa-label {
-	font-weight: 700;
-	margin-bottom: 3px;
-	color: #2E343A;
-}
-
-@media (max-width: 900px) {
-	.hero {
-		padding: 14px 16px;
-	}
-
-	.hero p {
-		font-size: 0.95rem;
-	}
-}
-</style>
-""",
-	unsafe_allow_html=True,
-)
-
-with st.sidebar:
-	st.markdown(
-		"""
-		<div class="sidebar-card">
-			<h3>Instructions</h3>
-			<ol class="sidebar-list">
-				<li>Upload file PDF</li>
-				<li>Process tai lieu de tao index</li>
-				<li>Nhap cau hoi ve noi dung</li>
-				<li>Xem cau tra loi va tiep tuc hoi</li>
-			</ol>
-		</div>
-		""",
-		unsafe_allow_html=True,
-	)
-
-	st.markdown('<div class="sidebar-card"><h3>Settings Information</h3></div>', unsafe_allow_html=True)
-	temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
-	top_k = st.slider("Top K Retrieval", min_value=1, max_value=20, value=6, step=1)
-	max_tokens = st.slider("Max Tokens", min_value=256, max_value=4096, value=1024, step=256)
-
-	st.markdown('<div class="sidebar-card"><h3>Model Configuration</h3></div>', unsafe_allow_html=True)
-	model_name = st.selectbox("LLM Model", ["gpt-4o-mini", "gpt-4.1-mini", "claude-3-haiku"])
-	embedding_name = st.selectbox(
-		"Embedding",
-		["text-embedding-3-large", "text-embedding-3-small"],
-	)
-
-	st.caption(f"Model: {model_name}")
-	st.caption(f"Embedding: {embedding_name}")
-	st.caption(f"Temperature: {temperature} | Top K: {top_k} | Max Tokens: {max_tokens}")
-
-	if st.button("Clear Chat", type="secondary"):
-		st.session_state.chat_history = []
-		st.rerun()
-
-st.markdown(
-	"""
-	<div class="hero">
-		<h1>SmartDocsAI - PDF Question Answering</h1>
-		<p>
-			Upload tai lieu, xu ly noi dung, sau do dat cau hoi de nhan cau tra loi sinh tu AI.
-			Giao dien nay tuan theo palette accessibility va flow su dung tung buoc.
-		</p>
-	</div>
-	""",
-	unsafe_allow_html=True,
-)
-
-if st.session_state.document_ready:
-	st.markdown('<span class="status-chip status-ready">Document ready for Q&A</span>', unsafe_allow_html=True)
 else:
-	st.markdown('<span class="status-chip status-waiting">Waiting for PDF processing</span>', unsafe_allow_html=True)
+    left, center, right = st.columns([1.05, 2.2, 1.1], gap="large")
 
-st.markdown('<div class="section-title">1) Upload PDF</div>', unsafe_allow_html=True)
-uploaded_file = st.file_uploader(
-	"Drop your PDF here",
-	type=["pdf"],
-	help="Chi ho tro dinh dang PDF",
-)
+    with left:
+        model_name = render_left_panel()
 
-if uploaded_file is not None:
-	st.info(f"Selected file: {uploaded_file.name}")
-	if st.button("Process Document", type="secondary"):
-		progress = st.progress(0)
-		status = st.empty()
-		steps = [
-			(15, "Dang tai file len he thong..."),
-			(45, "Dang trich xuat text tu PDF..."),
-			(75, "Dang tao embedding va index..."),
-			(100, "Hoan tat xu ly tai lieu."),
-		]
+    with center:
+        st.markdown(
+            load_template(
+                "document_topbar.html",
+                processed_file_name=html.escape(st.session_state.processed_file_name),
+            ),
+            unsafe_allow_html=True,
+        )
 
-		for percent, message in steps:
-			status.write(message)
-			progress.progress(percent)
-			time.sleep(0.3)
+        if not st.session_state.chat_history:
+            st.markdown(
+                load_template(
+                    "guide_card.html",
+                    processed_file_name=html.escape(st.session_state.processed_file_name),
+                ),
+                unsafe_allow_html=True,
+            )
 
-		st.session_state.document_ready = True
-		st.session_state.processed_file_name = uploaded_file.name
-		st.success("Tai lieu da san sang. Ban co the dat cau hoi ngay bay gio.")
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-st.markdown('<div class="section-title">2) Query Input</div>', unsafe_allow_html=True)
-question = st.text_input(
-	"Nhap cau hoi cua ban",
-	placeholder="Vi du: Tai lieu nay noi gi ve kien truc he thong?",
-)
+        if prompt := st.chat_input("Ask about your sources..."):
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
 
-if st.button("Generate Answer", type="primary"):
-	if not st.session_state.document_ready:
-		st.warning("Vui long upload va process PDF truoc khi dat cau hoi.")
-	elif not question.strip():
-		st.warning("Hay nhap cau hoi truoc khi gui.")
-	else:
-		answer = build_answer(
-			question=question.strip(),
-			file_name=st.session_state.processed_file_name,
-			model_name=model_name,
-		)
-		st.session_state.chat_history.append(
-			{
-				"question": question.strip(),
-				"answer": answer,
-			}
-		)
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-st.markdown('<div class="section-title">3) Answer Display</div>', unsafe_allow_html=True)
-if not st.session_state.chat_history:
-	st.write("Chua co cau tra loi nao. Hay upload va dat cau hoi de bat dau.")
-else:
-	for item in reversed(st.session_state.chat_history):
-		safe_q = html.escape(item["question"])
-		safe_a = html.escape(item["answer"])
-		st.markdown(
-			f"""
-			<div class="qa-card">
-				<div class="qa-label">Question</div>
-				<div>{safe_q}</div>
-				<div class="qa-label" style="margin-top: 8px;">Answer</div>
-				<div>{safe_a}</div>
-			</div>
-			""",
-			unsafe_allow_html=True,
-		)
+            with st.chat_message("assistant"):
+                message_placeholder = st.empty()
+                full_response = ""
+                answer = build_answer(prompt, st.session_state.processed_file_name, model_name)
+
+                for chunk in answer.split():
+                    full_response += chunk + " "
+                    time.sleep(0.03)
+                    message_placeholder.markdown(full_response + "▌")
+
+                message_placeholder.markdown(full_response)
+
+            st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+
+    with right:
+        st.markdown(load_template("studio_card.html"), unsafe_allow_html=True)
