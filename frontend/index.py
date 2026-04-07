@@ -12,149 +12,456 @@ TEMPLATES_DIR = UI_DIR / "templates"
 
 
 def init_state() -> None:
-    if "document_ready" not in st.session_state:
-        st.session_state.document_ready = False
-    if "processed_file_name" not in st.session_state:
-        st.session_state.processed_file_name = ""
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    if "sources" not in st.session_state:
-        st.session_state.sources = []
+	if "document_ready" not in st.session_state:
+		st.session_state.document_ready = False
+	if "processed_file_name" not in st.session_state:
+		st.session_state.processed_file_name = ""
+	if "chat_history" not in st.session_state:
+		st.session_state.chat_history = []
+	if "uploaded_files" not in st.session_state:
+		st.session_state.uploaded_files = []
 
 
 def build_answer(question: str, file_name: str, model_name: str) -> str:
-    return (
-        f"Dựa trên tài liệu '{file_name}', đây là thông tin cho câu hỏi: '{question}'.\n\n"
-        f"Phản hồi này được tạo bởi **{model_name}**. "
-        "Hệ thống đã trích xuất các phần liên quan từ tài liệu, "
-        "tổng hợp nội dung để cung cấp một câu trả lời chính xác và ngắn gọn "
-        "trực tiếp vào trọng tâm vấn đề bạn đang nghiên cứu."
-    )
+	return (
+		f"Tai lieu '{file_name}' da duoc phan tich. "
+		f"Cau hoi: '{question}'. "
+		f"Cau tra loi demo duoc tao boi {model_name}: "
+		"He thong se trich xuat cac doan lien quan tu PDF, tong hop noi dung, "
+		"va tra ve cau tra loi gon gang de ban co the tiep tuc hoi them."
+	)
 
 
-def load_template(name: str, **kwargs: str) -> str:
-    content = (TEMPLATES_DIR / name).read_text(encoding="utf-8")
-    return content.format(**kwargs) if kwargs else content
+def register_uploaded_file(file_name: str) -> None:
+	if not file_name:
+		return
+
+	for item in st.session_state.uploaded_files:
+		if item["name"] == file_name:
+			return
+
+	st.session_state.uploaded_files.append({"name": file_name, "processed": False})
 
 
-def inject_styles() -> None:
-    css = CSS_PATH.read_text(encoding="utf-8")
-    st.markdown(f"<style>\n{css}\n</style>", unsafe_allow_html=True)
+def mark_uploaded_file_processed(file_name: str) -> None:
+	for item in st.session_state.uploaded_files:
+		if item["name"] == file_name:
+			item["processed"] = True
+			return
+
+
+def render_sidebar_sources() -> None:
+	"""Render uploaded files list in sidebar."""
+	if not st.session_state.uploaded_files:
+		st.markdown('<div class="source-empty">No uploaded files yet.</div>', unsafe_allow_html=True)
+		return
+
+	for item in st.session_state.uploaded_files:
+		safe_name = html.escape(item["name"])
+		state = "ready" if item["processed"] else "uploaded"
+		pill_class = "source-pill-ready" if item["processed"] else "source-pill-uploaded"
+		st.markdown(
+			f'<div class="source-item"><div class="source-name" title="{safe_name}">{safe_name}</div>'
+			f'<div class="source-pill {pill_class}">{state}</div></div>',
+			unsafe_allow_html=True,
+		)
+
+
+def build_chat_html() -> str:
+	"""Build complete chat stream HTML with all messages properly nested."""
+	if not st.session_state.chat_history:
+		return '<div class="chat-stream"><div class="chat-empty">Upload and process a PDF to begin chatting.</div></div>'
+
+	messages = []
+	for item in st.session_state.chat_history:
+		safe_q = html.escape(item["question"])
+		safe_a = html.escape(item["answer"])
+		messages.append(
+			f'<div class="chat-row user"><div class="chat-bubble user">{safe_q}</div></div>'
+			f'<div class="chat-row assistant"><div class="chat-bubble assistant">{safe_a}</div></div>'
+		)
+
+	return '<div class="chat-stream">' + "".join(messages) + "</div>"
 
 
 st.set_page_config(
-    page_title="NotebookLM AI",
-    page_icon=str(PAGE_ICON_PATH) if PAGE_ICON_PATH.exists() else None,
-    layout="wide",
-    initial_sidebar_state="collapsed",
+	page_title="SmartDocsAI - Document Q&A",
+	page_icon=str(PAGE_ICON_PATH) if PAGE_ICON_PATH.exists() else None,
+	layout="wide",
 )
 
 init_state()
 inject_styles()
 
 
-def render_left_panel(empty_mode: bool = False) -> str:
-    model_name = st.session_state.get("left_panel_model_select", "gemini-1.5-pro")
-    with st.container():
-        st.markdown('<div id="lp_root_marker"></div>', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div id="lp_title">NotebookLM</div>
-            <div id="lp_subtitle">Sources</div>
-            """,
-            unsafe_allow_html=True,
-        )
+st.markdown(
+	"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
-        # Sources box (uploader + list)
-        with st.container():
-            st.markdown('<div id="lp_sources_area_marker"></div>', unsafe_allow_html=True)
-            uploaded_file = st.file_uploader(
-                "Add source",
-                type=["pdf", "txt", "md", "docx"],
-                label_visibility="collapsed",
-                key="left_panel_uploader",
-            )
-            st.markdown('<div id="lp_upload_helper">', unsafe_allow_html=True)
-            st.markdown(load_template("upload_helper.html"), unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+:root {
+	--primary: #007BFF;
+	--secondary: #FFC107;
+	--bg: #F8F9FA;
+	--sidebar-bg: #2C2F33;
+	--text-main: #212529;
+	--text-sidebar: #FFFFFF;
+	--surface: #FFFFFF;
+	--muted-border: #DDE2E7;
+}
 
-    if uploaded_file is not None and uploaded_file.name not in [s["name"] for s in st.session_state.sources]:
-        with st.spinner("Processing document..."):
-            time.sleep(1.2)
-            st.session_state.sources.append({
-                "name": uploaded_file.name,
-                "type": uploaded_file.type,
-            })
-            st.session_state.document_ready = True
-            st.session_state.processed_file_name = uploaded_file.name
-            st.rerun()
+html, body, [class*="css"] {
+	font-family: 'IBM Plex Sans', sans-serif;
+	height: 100%;
+	overflow: hidden;
+}
 
-        st.markdown('<div id="lp_sources_list_marker"></div>', unsafe_allow_html=True)
-        if not st.session_state.sources:
-            st.markdown(load_template("no_sources.html"), unsafe_allow_html=True)
-        else:
-            for source in st.session_state.sources:
-                escaped_name = html.escape(source["name"])
-                st.markdown(load_template("source_card.html", source_name=escaped_name), unsafe_allow_html=True)
+[data-testid="stAppViewContainer"] {
+	background: radial-gradient(circle at 2% 1%, #FFFFFF, var(--bg) 48%);
+}
 
-        # Model + actions
-        st.markdown('<div id="lp_model_area_marker"></div>', unsafe_allow_html=True)
-        st.markdown(load_template("model_label.html"), unsafe_allow_html=True)
+.block-container {
+	height: calc(100vh - 1rem);
+	overflow: hidden;
+	padding-top: 0.75rem;
+	padding-bottom: 0.75rem;
+	display: flex;
+	flex-direction: column;
+}
 
-        model_name = st.selectbox(
-            "LLM Model",
-            ["gemini-1.5-pro", "gemini-1.5-flash", "gpt-4o", "claude-3.5-sonnet"],
-            label_visibility="collapsed",
-            key="left_panel_model_select",
-        )
+[data-testid="stSidebar"] {
+	background-color: var(--sidebar-bg);
+	border-right: 1px solid #444B52;
+}
 
-        if st.button("Clear chat", use_container_width=True, key="left_panel_clear_chat"):
-            st.session_state.chat_history = []
-            st.rerun()
+[data-testid="stSidebar"] * {
+	color: var(--text-sidebar);
+}
 
-    # Apply empty-mode spacing on the styled container (CSS targets this class)
-    if empty_mode:
-        st.markdown(
-            "<script>document.currentScript?.closest('[data-testid=\"stVerticalBlock\"]').classList.add('empty-mode');</script>",
-            unsafe_allow_html=True,
-        )
+[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
+	background-color: #3A3E44;
+	border-color: #545B63;
+}
 
-    return model_name
+[data-testid="stSidebar"] .stSelectbox svg,
+[data-testid="stSidebar"] .stSelectbox span {
+	color: var(--text-sidebar);
+}
 
+.sidebar-shell {
+	font-family: 'Sora', sans-serif;
+	font-size: 0.86rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	margin: 0 0 10px 0;
+	opacity: 0.9;
+}
 
-if not st.session_state.document_ready:
-    left, main = st.columns([1.05, 3.2], gap="large")
+.sidebar-block {
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	border-radius: 12px;
+	padding: 12px;
+	margin-bottom: 10px;
+}
 
-    with left:
-        render_left_panel(empty_mode=True)
+.source-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 9px;
+	background: rgba(255, 255, 255, 0.09);
+	margin-bottom: 8px;
+}
 
-    with main:
-        st.markdown(load_template("empty_topbar.html"), unsafe_allow_html=True)
-        st.markdown(load_template("empty_state.html"), unsafe_allow_html=True)
+.source-item:last-child {
+	margin-bottom: 0;
+}
 
-else:
-    left, center, right = st.columns([1.05, 2.2, 1.1], gap="large")
+.source-name {
+	font-size: 0.85rem;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 160px;
+}
 
-    with left:
-        model_name = render_left_panel()
+.source-pill {
+	font-size: 0.68rem;
+	font-weight: 700;
+	padding: 2px 8px;
+	border-radius: 999px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
 
-    with center:
-        st.markdown(
-            load_template(
-                "document_topbar.html",
-                processed_file_name=html.escape(st.session_state.processed_file_name),
-            ),
-            unsafe_allow_html=True,
-        )
+.source-pill-ready {
+	background: #D9F5D1;
+	color: #0B6E00 !important;
+}
 
-        if not st.session_state.chat_history:
-            st.markdown(
-                load_template(
-                    "guide_card.html",
-                    processed_file_name=html.escape(st.session_state.processed_file_name),
-                ),
-                unsafe_allow_html=True,
-            )
+.source-pill-uploaded {
+	background: #FFF3CD;
+	color: #8A5A00 !important;
+}
+
+.source-empty {
+	font-size: 0.85rem;
+	opacity: 0.82;
+	padding: 6px 2px;
+}
+
+[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {
+	border: 1.5px dashed #B7BEC7;
+	background: #FFFFFF;
+	border-radius: 12px;
+}
+
+[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {
+	background-color: var(--secondary) !important;
+	color: var(--text-main) !important;
+	border: 1px solid #E0AE00 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
+}
+
+[data-testid="stButton"] button[kind="primary"] {
+	background-color: var(--primary) !important;
+	color: #FFFFFF !important;
+	border: 1px solid #0068D6 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
+}
+
+[data-testid="stButton"] button[kind="secondary"] {
+	background-color: var(--secondary) !important;
+	color: var(--text-main) !important;
+	border: 1px solid #E0AE00 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
+}
+
+[data-testid="stTextInput"] input {
+	border-radius: 10px !important;
+	border: 1px solid #CBD3DB !important;
+}
+
+[data-testid="stForm"] {
+	background: linear-gradient(to bottom, rgba(248, 249, 250, 0), var(--bg)) !important;
+	border: none !important;
+	padding: 12px 0 !important;
+	position: sticky !important;
+	bottom: 0;
+	z-index: 100;
+	margin-top: 10px !important;
+	padding-top: 8px !important;
+	padding-bottom: 8px !important;
+	padding-left: 1rem !important;
+	padding-right: 1rem !important;
+}
+
+.main-chat-title {
+	font-family: 'Sora', sans-serif;
+	font-size: 1.35rem;
+	font-weight: 700;
+	color: var(--text-main);
+	text-align: center;
+	padding-top: 20px;
+	margin-bottom: 12px;
+	margin-top: 20px;
+}
+
+.chat-stream {
+	height: calc(100vh - 20rem);
+	min-height: 250px;
+	max-height: calc(100vh - 20rem);
+	background: var(--surface);
+	border: 1px solid var(--muted-border);
+	border-radius: 16px;
+	padding: 16px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	scroll-behavior: smooth;
+}
+
+.chat-stream::-webkit-scrollbar {
+	width: 8px;
+}
+
+.chat-stream::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.chat-stream::-webkit-scrollbar-thumb {
+	background: #CBD3DB;
+	border-radius: 4px;
+}
+
+.chat-stream::-webkit-scrollbar-thumb:hover {
+	background: #B7BEC7;
+}
+
+.chat-row {
+	display: flex;
+	margin: 0;
+}
+
+.chat-row.user {
+	justify-content: flex-end;
+}
+
+.chat-row.assistant {
+	justify-content: flex-start;
+}
+
+.chat-bubble {
+	max-width: 74%;
+	padding: 10px 14px;
+	border-radius: 14px;
+	line-height: 1.5;
+	font-size: 0.95rem;
+	word-wrap: break-word;
+}
+
+.chat-bubble.user {
+	background: var(--primary);
+	color: #FFFFFF;
+	border-radius: 14px 4px 14px 14px;
+}
+
+.chat-bubble.assistant {
+	background: #F0F2F5;
+	color: var(--text-main);
+	border: 1px solid var(--muted-border);
+	border-radius: 4px 14px 14px 14px;
+}
+
+.chat-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: #66707A;
+	font-size: 0.95rem;
+}
+
+.send-error {
+	margin-top: 2px;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: #D92D20;
+}
+
+@media (max-width: 900px) {
+	html, body, [class*="css"] {
+		overflow: auto;
+	}
+
+	.block-container {
+		height: auto;
+		overflow: visible;
+	}
+
+	.chat-stream {
+		height: calc(100vh - 24rem);
+		max-height: calc(100vh - 24rem);
+		min-height: 180px;
+	}
+}
+</style>
+""",
+	unsafe_allow_html=True,
+)
+
+with st.sidebar:
+	st.markdown('<div class="sidebar-shell">GitHub Copilot Style</div>', unsafe_allow_html=True)
+
+	st.markdown('<div class="sidebar-block"><strong>Upload File</strong></div>', unsafe_allow_html=True)
+	uploaded_file = st.file_uploader(
+		"Upload PDF",
+		type=["pdf"],
+		label_visibility="collapsed",
+		help="Upload PDF document",
+	)
+
+	if uploaded_file is not None:
+		register_uploaded_file(uploaded_file.name)
+		st.caption(f"Selected: {uploaded_file.name}")
+		if st.button("Process", type="secondary", use_container_width=True):
+			progress = st.progress(0)
+			status = st.empty()
+			for percent, message in [
+				(20, "Uploading file..."),
+				(50, "Extracting content..."),
+				(80, "Building index..."),
+				(100, "Done"),
+			]:
+				status.write(message)
+				progress.progress(percent)
+				time.sleep(0.2)
+			st.session_state.document_ready = True
+			st.session_state.processed_file_name = uploaded_file.name
+			mark_uploaded_file_processed(uploaded_file.name)
+			st.success("Ready to chat")
+
+	st.markdown(
+		'<div class="sidebar-block"><strong>Uploaded Files</strong><div style="margin-top:8px;">',
+		unsafe_allow_html=True,
+	)
+	render_sidebar_sources()
+	st.markdown('</div></div>', unsafe_allow_html=True)
+
+	st.markdown('<div class="sidebar-block"><strong>Model</strong></div>', unsafe_allow_html=True)
+	model_name = st.selectbox(
+		"LLM Model",
+		["gpt-4o-mini", "gpt-4.1-mini", "claude-3-haiku"],
+		label_visibility="collapsed",
+	)
+
+	if st.button("Clear Chat", type="secondary", use_container_width=True):
+		st.session_state.chat_history = []
+		st.rerun()
+
+st.markdown('<div class="main-chat-title">SmartDocsAI Chat</div>', unsafe_allow_html=True)
+
+# Render complete chat stream with all messages properly nested
+st.markdown(build_chat_html(), unsafe_allow_html=True)
+
+with st.form("chat_form", clear_on_submit=True):
+	input_col, send_col = st.columns([1, 0.14], gap="small")
+	with input_col:
+		question = st.text_input(
+			"Message",
+			placeholder="Ask about your PDF...",
+			label_visibility="collapsed",
+		)
+	with send_col:
+		submitted = st.form_submit_button("Send", type="primary", use_container_width=True)
+
+if submitted:
+	if not st.session_state.document_ready:
+		st.markdown('<div class="send-error">Upload and process a PDF first.</div>', unsafe_allow_html=True)
+	elif not question.strip():
+		st.error("Enter a question.")
+	else:
+		answer = build_answer(
+			question=question.strip(),
+			file_name=st.session_state.processed_file_name,
+			model_name=model_name,
+		)
+		st.session_state.chat_history.append(
+			{
+				"question": question.strip(),
+				"answer": answer,
+			}
+		)
+		st.rerun()
 
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
