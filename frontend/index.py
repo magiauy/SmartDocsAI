@@ -4,11 +4,9 @@ from pathlib import Path
 
 import streamlit as st
 
+
 FRONTEND_DIR = Path(__file__).resolve().parent
 PAGE_ICON_PATH = FRONTEND_DIR / "assets" / "google-docs.png"
-UI_DIR = FRONTEND_DIR / "ui"
-CSS_PATH = UI_DIR / "styles.css"
-TEMPLATES_DIR = UI_DIR / "templates"
 
 
 def init_state() -> None:
@@ -91,8 +89,6 @@ st.set_page_config(
 )
 
 init_state()
-inject_styles()
-
 
 st.markdown(
 	"""
@@ -462,30 +458,3 @@ if submitted:
 			}
 		)
 		st.rerun()
-
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        if prompt := st.chat_input("Ask about your sources..."):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            with st.chat_message("assistant"):
-                message_placeholder = st.empty()
-                full_response = ""
-                answer = build_answer(prompt, st.session_state.processed_file_name, model_name)
-
-                for chunk in answer.split():
-                    full_response += chunk + " "
-                    time.sleep(0.03)
-                    message_placeholder.markdown(full_response + "▌")
-
-                message_placeholder.markdown(full_response)
-
-            st.session_state.chat_history.append({"role": "assistant", "content": full_response})
-
-    with right:
-        st.markdown(load_template("studio_card.html"), unsafe_allow_html=True)
