@@ -16,6 +16,8 @@ def init_state() -> None:
 		st.session_state.processed_file_name = ""
 	if "chat_history" not in st.session_state:
 		st.session_state.chat_history = []
+	if "uploaded_files" not in st.session_state:
+		st.session_state.uploaded_files = []
 
 
 def build_answer(question: str, file_name: str, model_name: str) -> str:
@@ -28,11 +30,62 @@ def build_answer(question: str, file_name: str, model_name: str) -> str:
 	)
 
 
+def register_uploaded_file(file_name: str) -> None:
+	if not file_name:
+		return
+
+	for item in st.session_state.uploaded_files:
+		if item["name"] == file_name:
+			return
+
+	st.session_state.uploaded_files.append({"name": file_name, "processed": False})
+
+
+def mark_uploaded_file_processed(file_name: str) -> None:
+	for item in st.session_state.uploaded_files:
+		if item["name"] == file_name:
+			item["processed"] = True
+			return
+
+
+def render_sidebar_sources() -> None:
+	"""Render uploaded files list in sidebar."""
+	if not st.session_state.uploaded_files:
+		st.markdown('<div class="source-empty">No uploaded files yet.</div>', unsafe_allow_html=True)
+		return
+
+	for item in st.session_state.uploaded_files:
+		safe_name = html.escape(item["name"])
+		state = "ready" if item["processed"] else "uploaded"
+		pill_class = "source-pill-ready" if item["processed"] else "source-pill-uploaded"
+		st.markdown(
+			f'<div class="source-item"><div class="source-name" title="{safe_name}">{safe_name}</div>'
+			f'<div class="source-pill {pill_class}">{state}</div></div>',
+			unsafe_allow_html=True,
+		)
+
+
+def build_chat_html() -> str:
+	"""Build complete chat stream HTML with all messages properly nested."""
+	if not st.session_state.chat_history:
+		return '<div class="chat-stream"><div class="chat-empty">Upload and process a PDF to begin chatting.</div></div>'
+
+	messages = []
+	for item in st.session_state.chat_history:
+		safe_q = html.escape(item["question"])
+		safe_a = html.escape(item["answer"])
+		messages.append(
+			f'<div class="chat-row user"><div class="chat-bubble user">{safe_q}</div></div>'
+			f'<div class="chat-row assistant"><div class="chat-bubble assistant">{safe_a}</div></div>'
+		)
+
+	return '<div class="chat-stream">' + "".join(messages) + "</div>"
+
+
 st.set_page_config(
 	page_title="SmartDocsAI - Document Q&A",
 	page_icon=str(PAGE_ICON_PATH) if PAGE_ICON_PATH.exists() else None,
 	layout="wide",
-	initial_sidebar_state="expanded",
 )
 
 init_state()
@@ -55,10 +108,21 @@ st.markdown(
 
 html, body, [class*="css"] {
 	font-family: 'IBM Plex Sans', sans-serif;
+	height: 100%;
+	overflow: hidden;
 }
 
 [data-testid="stAppViewContainer"] {
 	background: radial-gradient(circle at 2% 1%, #FFFFFF, var(--bg) 48%);
+}
+
+.block-container {
+	height: calc(100vh - 1rem);
+	overflow: hidden;
+	padding-top: 0.75rem;
+	padding-bottom: 0.75rem;
+	display: flex;
+	flex-direction: column;
 }
 
 [data-testid="stSidebar"] {
@@ -68,10 +132,6 @@ html, body, [class*="css"] {
 
 [data-testid="stSidebar"] * {
 	color: var(--text-sidebar);
-}
-
-[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"] {
-	background-color: var(--primary);
 }
 
 [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
@@ -84,78 +144,76 @@ html, body, [class*="css"] {
 	color: var(--text-sidebar);
 }
 
-.sidebar-card {
+.sidebar-shell {
+	font-family: 'Sora', sans-serif;
+	font-size: 0.86rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	margin: 0 0 10px 0;
+	opacity: 0.9;
+}
+
+.sidebar-block {
 	background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	border-radius: 12px;
-	padding: 14px;
-	margin-bottom: 14px;
+	padding: 12px;
+	margin-bottom: 10px;
 }
 
-.sidebar-card h3 {
-	font-family: 'Sora', sans-serif;
-	margin: 0 0 10px 0;
-	font-size: 1rem;
-}
-
-.sidebar-list {
-	margin: 0;
-	padding-left: 18px;
-	line-height: 1.5;
-	font-size: 0.93rem;
-}
-
-.hero {
-	background: linear-gradient(120deg, rgba(0, 123, 255, 0.14), rgba(255, 193, 7, 0.2));
-	border: 1px solid var(--muted-border);
-	border-radius: 16px;
-	padding: 18px 22px;
-	margin-bottom: 18px;
-}
-
-.hero h1 {
-	margin: 0;
-	color: var(--text-main);
-	font-family: 'Sora', sans-serif;
-	font-size: clamp(1.4rem, 2.2vw, 2rem);
-}
-
-.hero p {
-	margin: 8px 0 0;
-	color: #3A4047;
-}
-
-.section-title {
-	font-family: 'Sora', sans-serif;
-	color: var(--text-main);
-	font-size: 1.05rem;
-	margin-top: 8px;
+.source-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 9px;
+	background: rgba(255, 255, 255, 0.09);
 	margin-bottom: 8px;
 }
 
-.status-chip {
-	display: inline-block;
-	border-radius: 999px;
-	padding: 4px 10px;
-	font-weight: 600;
+.source-item:last-child {
+	margin-bottom: 0;
+}
+
+.source-name {
 	font-size: 0.85rem;
-	margin-bottom: 8px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 160px;
 }
 
-.status-ready {
-	color: #0B6E00;
+.source-pill {
+	font-size: 0.68rem;
+	font-weight: 700;
+	padding: 2px 8px;
+	border-radius: 999px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.source-pill-ready {
 	background: #D9F5D1;
+	color: #0B6E00 !important;
 }
 
-.status-waiting {
-	color: #8A5A00;
+.source-pill-uploaded {
 	background: #FFF3CD;
+	color: #8A5A00 !important;
+}
+
+.source-empty {
+	font-size: 0.85rem;
+	opacity: 0.82;
+	padding: 6px 2px;
 }
 
 [data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {
 	border: 1.5px dashed #B7BEC7;
 	background: #FFFFFF;
-	border-radius: 14px;
+	border-radius: 12px;
 }
 
 [data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {
@@ -167,48 +225,149 @@ html, body, [class*="css"] {
 }
 
 [data-testid="stButton"] button[kind="primary"] {
-	background-color: var(--primary);
-	color: #FFFFFF;
-	border: 1px solid #0068D6;
-	border-radius: 10px;
-	font-weight: 700;
+	background-color: var(--primary) !important;
+	color: #FFFFFF !important;
+	border: 1px solid #0068D6 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
 }
 
 [data-testid="stButton"] button[kind="secondary"] {
-	background-color: var(--secondary);
-	color: var(--text-main);
-	border: 1px solid #E0AE00;
-	border-radius: 10px;
-	font-weight: 700;
+	background-color: var(--secondary) !important;
+	color: var(--text-main) !important;
+	border: 1px solid #E0AE00 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
 }
 
 [data-testid="stTextInput"] input {
-	border-radius: 10px;
-	border: 1px solid #CBD3DB;
+	border-radius: 10px !important;
+	border: 1px solid #CBD3DB !important;
 }
 
-.qa-card {
+[data-testid="stForm"] {
+	background: linear-gradient(to bottom, rgba(248, 249, 250, 0), var(--bg)) !important;
+	border: none !important;
+	padding: 12px 0 !important;
+	position: sticky !important;
+	bottom: 0;
+	z-index: 100;
+	margin-top: 10px !important;
+	padding-top: 8px !important;
+	padding-bottom: 8px !important;
+	padding-left: 1rem !important;
+	padding-right: 1rem !important;
+}
+
+.main-chat-title {
+	font-family: 'Sora', sans-serif;
+	font-size: 1.35rem;
+	font-weight: 700;
+	color: var(--text-main);
+	text-align: center;
+	padding-top: 20px;
+	margin-bottom: 12px;
+	margin-top: 20px;
+}
+
+.chat-stream {
+	height: calc(100vh - 20rem);
+	min-height: 250px;
+	max-height: calc(100vh - 20rem);
 	background: var(--surface);
 	border: 1px solid var(--muted-border);
-	border-left: 5px solid var(--primary);
-	border-radius: 12px;
-	padding: 12px 14px;
-	margin-bottom: 10px;
+	border-radius: 16px;
+	padding: 16px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	scroll-behavior: smooth;
 }
 
-.qa-label {
-	font-weight: 700;
-	margin-bottom: 3px;
-	color: #2E343A;
+.chat-stream::-webkit-scrollbar {
+	width: 8px;
+}
+
+.chat-stream::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.chat-stream::-webkit-scrollbar-thumb {
+	background: #CBD3DB;
+	border-radius: 4px;
+}
+
+.chat-stream::-webkit-scrollbar-thumb:hover {
+	background: #B7BEC7;
+}
+
+.chat-row {
+	display: flex;
+	margin: 0;
+}
+
+.chat-row.user {
+	justify-content: flex-end;
+}
+
+.chat-row.assistant {
+	justify-content: flex-start;
+}
+
+.chat-bubble {
+	max-width: 74%;
+	padding: 10px 14px;
+	border-radius: 14px;
+	line-height: 1.5;
+	font-size: 0.95rem;
+	word-wrap: break-word;
+}
+
+.chat-bubble.user {
+	background: var(--primary);
+	color: #FFFFFF;
+	border-radius: 14px 4px 14px 14px;
+}
+
+.chat-bubble.assistant {
+	background: #F0F2F5;
+	color: var(--text-main);
+	border: 1px solid var(--muted-border);
+	border-radius: 4px 14px 14px 14px;
+}
+
+.chat-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: #66707A;
+	font-size: 0.95rem;
+}
+
+.send-error {
+	margin-top: 2px;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: #D92D20;
 }
 
 @media (max-width: 900px) {
-	.hero {
-		padding: 14px 16px;
+	html, body, [class*="css"] {
+		overflow: auto;
 	}
 
-	.hero p {
-		font-size: 0.95rem;
+	.block-container {
+		height: auto;
+		overflow: visible;
+	}
+
+	.chat-stream {
+		height: calc(100vh - 24rem);
+		max-height: calc(100vh - 24rem);
+		min-height: 180px;
 	}
 }
 </style>
@@ -217,98 +376,75 @@ html, body, [class*="css"] {
 )
 
 with st.sidebar:
+	st.markdown('<div class="sidebar-shell">GitHub Copilot Style</div>', unsafe_allow_html=True)
+
+	st.markdown('<div class="sidebar-block"><strong>Upload File</strong></div>', unsafe_allow_html=True)
+	uploaded_file = st.file_uploader(
+		"Upload PDF",
+		type=["pdf"],
+		label_visibility="collapsed",
+		help="Upload PDF document",
+	)
+
+	if uploaded_file is not None:
+		register_uploaded_file(uploaded_file.name)
+		st.caption(f"Selected: {uploaded_file.name}")
+		if st.button("Process", type="secondary", use_container_width=True):
+			progress = st.progress(0)
+			status = st.empty()
+			for percent, message in [
+				(20, "Uploading file..."),
+				(50, "Extracting content..."),
+				(80, "Building index..."),
+				(100, "Done"),
+			]:
+				status.write(message)
+				progress.progress(percent)
+				time.sleep(0.2)
+			st.session_state.document_ready = True
+			st.session_state.processed_file_name = uploaded_file.name
+			mark_uploaded_file_processed(uploaded_file.name)
+			st.success("Ready to chat")
+
 	st.markdown(
-		"""
-		<div class="sidebar-card">
-			<h3>Instructions</h3>
-			<ol class="sidebar-list">
-				<li>Upload file PDF</li>
-				<li>Process tai lieu de tao index</li>
-				<li>Nhap cau hoi ve noi dung</li>
-				<li>Xem cau tra loi va tiep tuc hoi</li>
-			</ol>
-		</div>
-		""",
+		'<div class="sidebar-block"><strong>Uploaded Files</strong><div style="margin-top:8px;">',
 		unsafe_allow_html=True,
 	)
+	render_sidebar_sources()
+	st.markdown('</div></div>', unsafe_allow_html=True)
 
-	st.markdown('<div class="sidebar-card"><h3>Settings Information</h3></div>', unsafe_allow_html=True)
-	temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.2, step=0.1)
-	top_k = st.slider("Top K Retrieval", min_value=1, max_value=20, value=6, step=1)
-	max_tokens = st.slider("Max Tokens", min_value=256, max_value=4096, value=1024, step=256)
-
-	st.markdown('<div class="sidebar-card"><h3>Model Configuration</h3></div>', unsafe_allow_html=True)
-	model_name = st.selectbox("LLM Model", ["gpt-4o-mini", "gpt-4.1-mini", "claude-3-haiku"])
-	embedding_name = st.selectbox(
-		"Embedding",
-		["text-embedding-3-large", "text-embedding-3-small"],
+	st.markdown('<div class="sidebar-block"><strong>Model</strong></div>', unsafe_allow_html=True)
+	model_name = st.selectbox(
+		"LLM Model",
+		["gpt-4o-mini", "gpt-4.1-mini", "claude-3-haiku"],
+		label_visibility="collapsed",
 	)
 
-	st.caption(f"Model: {model_name}")
-	st.caption(f"Embedding: {embedding_name}")
-	st.caption(f"Temperature: {temperature} | Top K: {top_k} | Max Tokens: {max_tokens}")
-
-	if st.button("Clear Chat", type="secondary"):
+	if st.button("Clear Chat", type="secondary", use_container_width=True):
 		st.session_state.chat_history = []
 		st.rerun()
 
-st.markdown(
-	"""
-	<div class="hero">
-		<h1>SmartDocsAI - PDF Question Answering</h1>
-		<p>
-			Upload tai lieu, xu ly noi dung, sau do dat cau hoi de nhan cau tra loi sinh tu AI.
-			Giao dien nay tuan theo palette accessibility va flow su dung tung buoc.
-		</p>
-	</div>
-	""",
-	unsafe_allow_html=True,
-)
+st.markdown('<div class="main-chat-title">SmartDocsAI Chat</div>', unsafe_allow_html=True)
 
-if st.session_state.document_ready:
-	st.markdown('<span class="status-chip status-ready">Document ready for Q&A</span>', unsafe_allow_html=True)
-else:
-	st.markdown('<span class="status-chip status-waiting">Waiting for PDF processing</span>', unsafe_allow_html=True)
+# Render complete chat stream with all messages properly nested
+st.markdown(build_chat_html(), unsafe_allow_html=True)
 
-st.markdown('<div class="section-title">1) Upload PDF</div>', unsafe_allow_html=True)
-uploaded_file = st.file_uploader(
-	"Drop your PDF here",
-	type=["pdf"],
-	help="Chi ho tro dinh dang PDF",
-)
+with st.form("chat_form", clear_on_submit=True):
+	input_col, send_col = st.columns([1, 0.14], gap="small")
+	with input_col:
+		question = st.text_input(
+			"Message",
+			placeholder="Ask about your PDF...",
+			label_visibility="collapsed",
+		)
+	with send_col:
+		submitted = st.form_submit_button("Send", type="primary", use_container_width=True)
 
-if uploaded_file is not None:
-	st.info(f"Selected file: {uploaded_file.name}")
-	if st.button("Process Document", type="secondary"):
-		progress = st.progress(0)
-		status = st.empty()
-		steps = [
-			(15, "Dang tai file len he thong..."),
-			(45, "Dang trich xuat text tu PDF..."),
-			(75, "Dang tao embedding va index..."),
-			(100, "Hoan tat xu ly tai lieu."),
-		]
-
-		for percent, message in steps:
-			status.write(message)
-			progress.progress(percent)
-			time.sleep(0.3)
-
-		st.session_state.document_ready = True
-		st.session_state.processed_file_name = uploaded_file.name
-		st.success("Tai lieu da san sang. Ban co the dat cau hoi ngay bay gio.")
-
-st.markdown('<div class="section-title">2) Query Input</div>', unsafe_allow_html=True)
-question = st.text_input(
-	"Nhap cau hoi cua ban",
-	placeholder="Vi du: Tai lieu nay noi gi ve kien truc he thong?",
-)
-
-if st.button("Generate Answer", type="primary"):
+if submitted:
 	if not st.session_state.document_ready:
-		st.warning("Vui long upload va process PDF truoc khi dat cau hoi.")
+		st.markdown('<div class="send-error">Upload and process a PDF first.</div>', unsafe_allow_html=True)
 	elif not question.strip():
-		st.warning("Hay nhap cau hoi truoc khi gui.")
+		st.error("Enter a question.")
 	else:
 		answer = build_answer(
 			question=question.strip(),
@@ -321,22 +457,4 @@ if st.button("Generate Answer", type="primary"):
 				"answer": answer,
 			}
 		)
-
-st.markdown('<div class="section-title">3) Answer Display</div>', unsafe_allow_html=True)
-if not st.session_state.chat_history:
-	st.write("Chua co cau tra loi nao. Hay upload va dat cau hoi de bat dau.")
-else:
-	for item in reversed(st.session_state.chat_history):
-		safe_q = html.escape(item["question"])
-		safe_a = html.escape(item["answer"])
-		st.markdown(
-			f"""
-			<div class="qa-card">
-				<div class="qa-label">Question</div>
-				<div>{safe_q}</div>
-				<div class="qa-label" style="margin-top: 8px;">Answer</div>
-				<div>{safe_a}</div>
-			</div>
-			""",
-			unsafe_allow_html=True,
-		)
+		st.rerun()
