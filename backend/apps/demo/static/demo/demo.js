@@ -23,6 +23,12 @@ const elements = {
   connectionPill: document.getElementById("connection-pill"),
 };
 
+const providerDefaults = {
+  gemini: "gemini-2.5-flash",
+  ollama: "qwen2:1.5b",
+  mock: "mock-1",
+};
+
 function getCookie(name) {
   const cookieValue = document.cookie
     .split(";")
@@ -221,6 +227,11 @@ elements.uploadForm.addEventListener("submit", async (event) => {
 
 elements.refreshDocumentsButton.addEventListener("click", async () => {
   await loadDocuments();
+});
+
+elements.providerSelect.addEventListener("change", () => {
+  const defaultModel = providerDefaults[elements.providerSelect.value];
+  elements.modelInput.value = defaultModel;
 });
 
 elements.conversationForm.addEventListener("submit", async (event) => {

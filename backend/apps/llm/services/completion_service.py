@@ -5,12 +5,35 @@ from apps.llm.interfaces.base import CompletionRequest
 from apps.llm.services.provider_factory import ProviderFactory
 
 
+DEFAULT_SYSTEM_PROMPT = (
+    "Bạn là một trợ lý ảo thông minh chuyên phân tích tài liệu. "
+    "Hãy trả lời CHỈ dựa vào ngữ cảnh được cung cấp. "
+    "Nếu không có đáp án trong tài liệu, hãy trả lời đúng câu: 'Tài liệu không đề cập đến'."
+)
+
+
 class CompletionService:
     def __init__(self, factory=None):
         self.factory = factory or ProviderFactory(settings)
 
-    def generate(self, provider: str, model: str, prompt: str, context_hits: list[dict] | None = None):
-        request = CompletionRequest(provider=provider, model=model, prompt=prompt, context_hits=context_hits or [])
+    def generate(
+        self,
+        provider: str,
+        model: str,
+        prompt: str,
+        context_hits: list[dict] | None = None,
+        chat_history: list[dict] | None = None,
+        system_prompt: str = "",
+    ):
+        hits = context_hits or []
+        history = chat_history or []
+        compiled_prompt = self._build_prompt(
+            user_prompt=prompt,
+            context_hits=hits,
+            chat_history=history,
+            system_prompt=system_prompt,
+        )
+        request = CompletionRequest(provider=provider, model=model, prompt=compiled_prompt, context_hits=hits)
         client = self.factory.build(provider)
         response = async_to_sync(client.generate)(request)
         return {
@@ -21,3 +44,32 @@ class CompletionService:
             "tokens_output": response.tokens_output,
             "latency_ms": response.latency_ms,
         }
+
+    def _build_prompt(self, user_prompt: str, context_hits: list[dict], chat_history: list[dict], system_prompt: str) -> str:
+        context_blocks = []
+        for index, hit in enumerate(context_hits, start=1):
+            metadata = hit.get("metadata", {})
+            source = metadata.get("file_id") or metadata.get("document_id") or "unknown"
+            context_blocks.append(f"[{index}] (source={source}) {hit.get('content', '').strip()}")
+
+        if not context_blocks:
+            context_blocks.append("(Không có ngữ cảnh truy xuất)")
+
+        history_blocks = []
+        for item in chat_history:
+            role = item.get("role", "user")
+            content = item.get("content", "").strip()
+            if content:
+                history_blocks.append(f"{role}: {content}")
+
+        if not history_blocks:
+            history_blocks.append("(Không có lịch sử hội thoại)")
+
+        prompt_parts = [
+            f"[SYSTEM]\n{system_prompt or DEFAULT_SYSTEM_PROMPT}",
+            "[CONTEXT]\n" + "\n".join(context_blocks),
+            "[CHAT_HISTORY]\n" + "\n".join(history_blocks),
+            f"[QUESTION]\n{user_prompt.strip()}",
+            "[INSTRUCTION]\nTrả lời ngắn gọn, đúng trọng tâm, chỉ dựa trên CONTEXT.",
+        ]
+        return "\n\n".join(prompt_parts)

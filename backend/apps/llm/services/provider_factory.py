@@ -11,7 +11,7 @@ class ProviderFactory:
         if provider == "gemini" and getattr(self.settings, "GEMINI_API_KEY", ""):
             return GeminiClient(getattr(self.settings, "GEMINI_API_KEY", ""), getattr(self.settings, "GEMINI_MODEL", "gemini-2.5-flash"))
         if provider == "ollama" and getattr(self.settings, "OLLAMA_BASE_URL", ""):
-            return OllamaClient(getattr(self.settings, "OLLAMA_BASE_URL", ""), getattr(self.settings, "OLLAMA_MODEL", "llama3.2"))
+            return OllamaClient(getattr(self.settings, "OLLAMA_BASE_URL", ""), getattr(self.settings, "OLLAMA_MODEL", "qwen2:1.5b"))
         return MockClient()
 
     def describe(self):

@@ -6,6 +6,8 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     env_file:
       - .env
+    environment:
+      - DB_ENGINE=  # Use SQLite for Docker development
     volumes:
       - ./:/app
     ports:
@@ -21,6 +23,8 @@ services:
     command: celery -A app worker -l info
     env_file:
       - .env
+    environment:
+      - DB_ENGINE=  # Use SQLite for Docker development
     volumes:
       - ./:/app
     depends_on:
@@ -40,6 +44,15 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
 
+  ollama:
+    image: ollama/ollama:latest
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+
   mysql:
     image: mysql:8.4
     profiles:
@@ -56,4 +69,5 @@ services:
 
 volumes:
   qdrant_storage:
+  ollama_storage:
   mysql_data:

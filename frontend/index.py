@@ -1,12 +1,18 @@
 import html
+import os
 import time
 from pathlib import Path
 
+import httpx
 import streamlit as st
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent
 PAGE_ICON_PATH = FRONTEND_DIR / "assets" / "google-docs.png"
+API_BASE_URL = os.getenv("SMARTDOCSAI_API_BASE_URL", "http://localhost:8000").rstrip("/")
+POLL_INTERVAL_SECONDS = float(os.getenv("SMARTDOCSAI_FE_POLL_INTERVAL_SECONDS", "2"))
+DOCUMENT_POLL_TIMEOUT_SECONDS = int(os.getenv("SMARTDOCSAI_FE_DOCUMENT_TIMEOUT_SECONDS", "180"))
+CONVERSATION_POLL_TIMEOUT_SECONDS = int(os.getenv("SMARTDOCSAI_FE_CONVERSATION_TIMEOUT_SECONDS", "120"))
 
 
 def init_state() -> None:
@@ -18,27 +24,29 @@ def init_state() -> None:
 		st.session_state.chat_history = []
 	if "uploaded_files" not in st.session_state:
 		st.session_state.uploaded_files = []
+	if "active_document_id" not in st.session_state:
+		st.session_state.active_document_id = None
+	if "conversation_id" not in st.session_state:
+		st.session_state.conversation_id = None
+	if "conversation_ready" not in st.session_state:
+		st.session_state.conversation_ready = False
+	if "last_error" not in st.session_state:
+		st.session_state.last_error = ""
+	if "last_hits" not in st.session_state:
+		st.session_state.last_hits = []
 
 
-def build_answer(question: str, file_name: str, model_name: str) -> str:
-	return (
-		f"Tai lieu '{file_name}' da duoc phan tich. "
-		f"Cau hoi: '{question}'. "
-		f"Cau tra loi demo duoc tao boi {model_name}: "
-		"He thong se trich xuat cac doan lien quan tu PDF, tong hop noi dung, "
-		"va tra ve cau tra loi gon gang de ban co the tiep tuc hoi them."
-	)
-
-
-def register_uploaded_file(file_name: str) -> None:
+def register_uploaded_file(file_name: str, document_id: int | None = None) -> None:
 	if not file_name:
 		return
 
 	for item in st.session_state.uploaded_files:
 		if item["name"] == file_name:
+			if document_id is not None:
+				item["document_id"] = document_id
 			return
 
-	st.session_state.uploaded_files.append({"name": file_name, "processed": False})
+	st.session_state.uploaded_files.append({"name": file_name, "processed": False, "document_id": document_id})
 
 
 def mark_uploaded_file_processed(file_name: str) -> None:
@@ -46,6 +54,83 @@ def mark_uploaded_file_processed(file_name: str) -> None:
 		if item["name"] == file_name:
 			item["processed"] = True
 			return
+
+
+def api_request(method: str, path: str, *, json_payload=None, files=None, timeout=60.0, allow_status_codes=None):
+	allow_status_codes = set(allow_status_codes or [])
+	url = f"{API_BASE_URL}{path}"
+	with httpx.Client(timeout=timeout) as client:
+		response = client.request(method, url, json=json_payload, files=files)
+	try:
+		payload = response.json()
+	except ValueError:
+		raise RuntimeError(f"Backend returned invalid JSON (HTTP {response.status_code}).")
+
+	if response.status_code >= 400 and response.status_code not in allow_status_codes:
+		error_message = payload.get("message") or payload.get("errors") or response.text
+		raise RuntimeError(str(error_message))
+
+	if not payload.get("success", False):
+		raise RuntimeError(payload.get("message", "Backend request failed."))
+	return payload.get("data", {})
+
+
+def poll_document_ready(document_id: int, *, timeout_seconds: int = DOCUMENT_POLL_TIMEOUT_SECONDS, on_update=None):
+	deadline = time.time() + timeout_seconds
+	while time.time() < deadline:
+		data = api_request("GET", f"/api/documents/{document_id}/status/")
+		if on_update:
+			on_update(data)
+		if data.get("processing_status") == "indexed":
+			return data
+		if data.get("processing_status") == "failed":
+			raise RuntimeError(data.get("error_message") or "Document indexing failed.")
+		time.sleep(POLL_INTERVAL_SECONDS)
+	raise TimeoutError("Document indexing did not finish in time.")
+
+
+def ensure_conversation(model_name: str, on_update=None):
+	if st.session_state.conversation_id and st.session_state.conversation_ready:
+		return st.session_state.conversation_id
+
+	if st.session_state.active_document_id is None:
+		raise RuntimeError("No processed document found.")
+
+	if not st.session_state.conversation_id:
+		created = api_request(
+			"POST",
+			"/api/conversations/",
+			json_payload={
+				"title": f"Chat about {st.session_state.processed_file_name}",
+				"provider": "gemini",
+				"model": model_name,
+				"document_ids": [st.session_state.active_document_id],
+			},
+		)
+		st.session_state.conversation_id = created.get("id")
+
+	deadline = time.time() + CONVERSATION_POLL_TIMEOUT_SECONDS
+	while time.time() < deadline:
+		status_data = api_request("GET", f"/api/conversations/{st.session_state.conversation_id}/status/")
+		if on_update:
+			on_update(status_data)
+		if status_data.get("status") == "ready":
+			st.session_state.conversation_ready = True
+			return st.session_state.conversation_id
+		if status_data.get("status") == "failed":
+			raise RuntimeError("Conversation preparation failed.")
+		time.sleep(POLL_INTERVAL_SECONDS)
+
+	raise TimeoutError("Conversation is still preparing.")
+
+
+def refresh_chat_history(conversation_id: int):
+	data = api_request("GET", f"/api/conversations/{conversation_id}/messages/")
+	messages = data.get("messages", [])
+	st.session_state.chat_history = [
+		{"role": message.get("role", "assistant"), "content": message.get("content", "")}
+		for message in messages
+	]
 
 
 def render_sidebar_sources() -> None:
@@ -72,12 +157,12 @@ def build_chat_html() -> str:
 
 	messages = []
 	for item in st.session_state.chat_history:
-		safe_q = html.escape(item["question"])
-		safe_a = html.escape(item["answer"])
-		messages.append(
-			f'<div class="chat-row user"><div class="chat-bubble user">{safe_q}</div></div>'
-			f'<div class="chat-row assistant"><div class="chat-bubble assistant">{safe_a}</div></div>'
-		)
+		role = item.get("role", "assistant")
+		content = html.escape(item.get("content", ""))
+		if role == "user":
+			messages.append(f'<div class="chat-row user"><div class="chat-bubble user">{content}</div></div>')
+		else:
+			messages.append(f'<div class="chat-row assistant"><div class="chat-bubble assistant">{content}</div></div>')
 
 	return '<div class="chat-stream">' + "".join(messages) + "</div>"
 
@@ -210,13 +295,40 @@ html, body, [class*="css"] {
 	padding: 6px 2px;
 }
 
+[data-testid="stFileUploader"] {
+	background: transparent !important;
+}
+
+[data-testid="stFileUploader"] section {
+	background: transparent !important;
+}
+
 [data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {
-	border: 1.5px dashed #B7BEC7;
-	background: #FFFFFF;
-	border-radius: 12px;
+	border: 2px dashed var(--secondary) !important;
+	background: rgba(255, 255, 255, 0.08) !important;
+	border-radius: 12px !important;
+	padding: 20px !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] section {
+	border: 2px dashed var(--secondary) !important;
+}
+
+[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] p,
+[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] span,
+[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] div {
+	color: var(--text-sidebar) !important;
 }
 
 [data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] button {
+	background-color: var(--secondary) !important;
+	color: var(--text-main) !important;
+	border: 1px solid #E0AE00 !important;
+	border-radius: 10px !important;
+	font-weight: 700 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
 	background-color: var(--secondary) !important;
 	color: var(--text-main) !important;
 	border: 1px solid #E0AE00 !important;
@@ -243,6 +355,12 @@ html, body, [class*="css"] {
 [data-testid="stTextInput"] input {
 	border-radius: 10px !important;
 	border: 1px solid #CBD3DB !important;
+	background-color: #FFFFFF !important;
+	color: var(--text-main) !important;
+}
+
+.st-dd {
+	background-color: #FFFFFF !important;
 }
 
 [data-testid="stForm"] {
@@ -376,9 +494,9 @@ html, body, [class*="css"] {
 )
 
 with st.sidebar:
-	st.markdown('<div class="sidebar-shell">GitHub Copilot Style</div>', unsafe_allow_html=True)
+	st.markdown('<div class="sidebar-shell">SmartDocsAI</div>', unsafe_allow_html=True)
+	st.caption(f"API: {API_BASE_URL}")
 
-	st.markdown('<div class="sidebar-block"><strong>Upload File</strong></div>', unsafe_allow_html=True)
 	uploaded_file = st.file_uploader(
 		"Upload PDF",
 		type=["pdf"],
@@ -387,47 +505,80 @@ with st.sidebar:
 	)
 
 	if uploaded_file is not None:
-		register_uploaded_file(uploaded_file.name)
 		st.caption(f"Selected: {uploaded_file.name}")
 		if st.button("Process", type="secondary", use_container_width=True):
 			progress = st.progress(0)
 			status = st.empty()
-			for percent, message in [
-				(20, "Uploading file..."),
-				(50, "Extracting content..."),
-				(80, "Building index..."),
-				(100, "Done"),
-			]:
-				status.write(message)
-				progress.progress(percent)
-				time.sleep(0.2)
-			st.session_state.document_ready = True
-			st.session_state.processed_file_name = uploaded_file.name
-			mark_uploaded_file_processed(uploaded_file.name)
-			st.success("Ready to chat")
+			try:
+				st.session_state.last_error = ""
+				st.session_state.last_hits = []
+				status.write("Uploading file...")
+				file_payload = [("files", (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type or "application/pdf"))]
+				response = api_request("POST", "/api/documents/upload/", files=file_payload)
+				documents = response.get("documents", [])
+				if not documents:
+					raise RuntimeError("Upload succeeded but no document metadata was returned.")
+				document = documents[0]
+				st.session_state.active_document_id = document.get("id")
+				st.session_state.conversation_id = None
+				st.session_state.conversation_ready = False
+				st.session_state.document_ready = False
+				st.session_state.processed_file_name = uploaded_file.name
+				register_uploaded_file(uploaded_file.name, document_id=document.get("id"))
+				progress.progress(35)
 
-	st.markdown(
-		'<div class="sidebar-block"><strong>Uploaded Files</strong><div style="margin-top:8px;">',
-		unsafe_allow_html=True,
-	)
+				status.write("Building index...")
+				poll_document_ready(
+					document.get("id"),
+					on_update=lambda payload: status.write(
+						f"Building index... ({payload.get('processing_status', 'processing')})"
+					),
+				)
+				progress.progress(100)
+
+				st.session_state.document_ready = True
+				mark_uploaded_file_processed(uploaded_file.name)
+				st.success("Ready to chat")
+			except Exception as exc:
+				st.session_state.last_error = str(exc)
+				st.error(f"Processing failed: {exc}")
+
 	render_sidebar_sources()
 	st.markdown('</div></div>', unsafe_allow_html=True)
 
 	st.markdown('<div class="sidebar-block"><strong>Model</strong></div>', unsafe_allow_html=True)
 	model_name = st.selectbox(
 		"LLM Model",
-		["gpt-4o-mini", "gpt-4.1-mini", "claude-3-haiku"],
+		["gemini-2.5-flash", "gemini-2.5-pro"],
 		label_visibility="collapsed",
 	)
 
 	if st.button("Clear Chat", type="secondary", use_container_width=True):
 		st.session_state.chat_history = []
+		st.session_state.last_hits = []
+		st.session_state.last_error = ""
+		st.session_state.conversation_id = None
+		st.session_state.conversation_ready = False
 		st.rerun()
 
 st.markdown('<div class="main-chat-title">SmartDocsAI Chat</div>', unsafe_allow_html=True)
 
+if st.session_state.last_error:
+	st.error(f"Last error: {st.session_state.last_error}")
+
 # Render complete chat stream with all messages properly nested
 st.markdown(build_chat_html(), unsafe_allow_html=True)
+
+if st.session_state.last_hits:
+	with st.expander(f"Retrieval hits ({len(st.session_state.last_hits)})", expanded=False):
+		for idx, hit in enumerate(st.session_state.last_hits, start=1):
+			metadata = hit.get("metadata") or {}
+			score = hit.get("score", 0)
+			document_id = metadata.get("document_id", "n/a")
+			chunk_index = metadata.get("chunk_index", "n/a")
+			content = str(hit.get("content", "")).strip()[:320]
+			st.markdown(f"**Hit {idx}** - score: `{score:.4f}` - doc: `{document_id}` - chunk: `{chunk_index}`")
+			st.caption(content or "(empty chunk)")
 
 with st.form("chat_form", clear_on_submit=True):
 	input_col, send_col = st.columns([1, 0.14], gap="small")
@@ -446,15 +597,27 @@ if submitted:
 	elif not question.strip():
 		st.error("Enter a question.")
 	else:
-		answer = build_answer(
-			question=question.strip(),
-			file_name=st.session_state.processed_file_name,
-			model_name=model_name,
-		)
-		st.session_state.chat_history.append(
-			{
-				"question": question.strip(),
-				"answer": answer,
-			}
-		)
-		st.rerun()
+		try:
+			conversation_status = st.empty()
+			conversation_id = ensure_conversation(
+				model_name,
+				on_update=lambda payload: conversation_status.info(
+					f"Conversation status: {payload.get('status', 'preparing')}"
+				),
+			)
+			result = api_request(
+				"POST",
+				f"/api/conversations/{conversation_id}/messages/",
+				json_payload={"role": "user", "content": question.strip()},
+				allow_status_codes={409},
+			)
+			if result.get("ready_for_chat") is False:
+				st.warning("Conversation is still preparing. Please wait a few seconds and send again.")
+				st.session_state.last_hits = []
+				st.stop()
+			st.session_state.last_hits = result.get("hits", [])
+			refresh_chat_history(conversation_id)
+			st.rerun()
+		except Exception as exc:
+			st.session_state.last_error = str(exc)
+			st.error(f"Send failed: {exc}")
