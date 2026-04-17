@@ -1,0 +1,20 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartdocsai-frontend
+    env_file:
+      - ../backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SMARTDOCSAI_API_BASE_URL: ${SMARTDOCSAI_API_BASE_URL:-http://host.docker.internal:8000}
+      SMARTDOCSAI_LLM_PROVIDER: ${SMARTDOCSAI_LLM_PROVIDER:-gemini}
+      SMARTDOCSAI_LLM_MODEL: ${SMARTDOCSAI_LLM_MODEL:-${GEMINI_MODEL:-gemini-2.5-flash}}
+      SMARTDOCSAI_FE_POLL_INTERVAL_SECONDS: ${SMARTDOCSAI_FE_POLL_INTERVAL_SECONDS:-2}
+      SMARTDOCSAI_FE_DOCUMENT_TIMEOUT_SECONDS: ${SMARTDOCSAI_FE_DOCUMENT_TIMEOUT_SECONDS:-180}
+      SMARTDOCSAI_FE_CONVERSATION_TIMEOUT_SECONDS: ${SMARTDOCSAI_FE_CONVERSATION_TIMEOUT_SECONDS:-120}
+    ports:
+      - "8501:8501"
+    restart: unless-stopped

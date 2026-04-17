@@ -13,6 +13,51 @@ API_BASE_URL = os.getenv("SMARTDOCSAI_API_BASE_URL", "http://localhost:8000").rs
 POLL_INTERVAL_SECONDS = float(os.getenv("SMARTDOCSAI_FE_POLL_INTERVAL_SECONDS", "2"))
 DOCUMENT_POLL_TIMEOUT_SECONDS = int(os.getenv("SMARTDOCSAI_FE_DOCUMENT_TIMEOUT_SECONDS", "180"))
 CONVERSATION_POLL_TIMEOUT_SECONDS = int(os.getenv("SMARTDOCSAI_FE_CONVERSATION_TIMEOUT_SECONDS", "120"))
+LLM_PROVIDER = os.getenv("SMARTDOCSAI_LLM_PROVIDER", "gemini").strip().lower()
+LLM_MODEL = os.getenv(
+	"SMARTDOCSAI_LLM_MODEL",
+	os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if LLM_PROVIDER == "gemini" else os.getenv("OLLAMA_MODEL", "qwen2:1.5b"),
+).strip()
+
+
+def _split_csv_env(value: str) -> list[str]:
+	return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def build_model_options() -> list[tuple[str, str]]:
+	gemini_default = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+	ollama_default = os.getenv("OLLAMA_MODEL", "qwen2:1.5b").strip()
+
+	gemini_models = _split_csv_env(os.getenv("SMARTDOCSAI_GEMINI_MODELS", "gemini-2.5-flash,gemini-2.5-pro"))
+	ollama_models = _split_csv_env(os.getenv("SMARTDOCSAI_OLLAMA_MODELS", ollama_default))
+
+	if gemini_default and gemini_default not in gemini_models:
+		gemini_models.insert(0, gemini_default)
+	if ollama_default and ollama_default not in ollama_models:
+		ollama_models.insert(0, ollama_default)
+
+	options: list[tuple[str, str]] = []
+	for model in gemini_models:
+		options.append(("gemini", model))
+	for model in ollama_models:
+		options.append(("ollama", model))
+
+	# Keep order stable and avoid duplicate provider/model pairs.
+	seen: set[tuple[str, str]] = set()
+	unique_options: list[tuple[str, str]] = []
+	for option in options:
+		if option in seen:
+			continue
+		seen.add(option)
+		unique_options.append(option)
+
+	if not unique_options:
+		unique_options = [(LLM_PROVIDER, LLM_MODEL)]
+
+	return unique_options
+
+
+MODEL_OPTIONS = build_model_options()
 
 
 def init_state() -> None:
@@ -67,7 +112,8 @@ def api_request(method: str, path: str, *, json_payload=None, files=None, timeou
 		raise RuntimeError(f"Backend returned invalid JSON (HTTP {response.status_code}).")
 
 	if response.status_code >= 400 and response.status_code not in allow_status_codes:
-		error_message = payload.get("message") or payload.get("errors") or response.text
+		data_message = payload.get("data", {}).get("message") if isinstance(payload.get("data"), dict) else None
+		error_message = data_message or payload.get("message") or payload.get("errors") or response.text
 		raise RuntimeError(str(error_message))
 
 	if not payload.get("success", False):
@@ -89,7 +135,7 @@ def poll_document_ready(document_id: int, *, timeout_seconds: int = DOCUMENT_POL
 	raise TimeoutError("Document indexing did not finish in time.")
 
 
-def ensure_conversation(model_name: str, on_update=None):
+def ensure_conversation(model_name: str, provider: str, on_update=None):
 	if st.session_state.conversation_id and st.session_state.conversation_ready:
 		return st.session_state.conversation_id
 
@@ -102,7 +148,7 @@ def ensure_conversation(model_name: str, on_update=None):
 			"/api/conversations/",
 			json_payload={
 				"title": f"Chat about {st.session_state.processed_file_name}",
-				"provider": "gemini",
+				"provider": provider,
 				"model": model_name,
 				"document_ids": [st.session_state.active_document_id],
 			},
@@ -546,12 +592,29 @@ with st.sidebar:
 	render_sidebar_sources()
 	st.markdown('</div></div>', unsafe_allow_html=True)
 
+	default_option = next((opt for opt in MODEL_OPTIONS if opt == (LLM_PROVIDER, LLM_MODEL)), MODEL_OPTIONS[0])
+	default_index = MODEL_OPTIONS.index(default_option)
+
 	st.markdown('<div class="sidebar-block"><strong>Model</strong></div>', unsafe_allow_html=True)
-	model_name = st.selectbox(
+	selected_option = st.selectbox(
 		"LLM Model",
-		["gemini-2.5-flash", "gemini-2.5-pro"],
+		MODEL_OPTIONS,
+		index=default_index,
+		format_func=lambda opt: f"{opt[1]} ({opt[0]})",
 		label_visibility="collapsed",
 	)
+	selected_provider, model_name = selected_option
+
+	if st.session_state.last_hits:
+		with st.expander(f"Retrieval hits ({len(st.session_state.last_hits)})", expanded=False):
+			for idx, hit in enumerate(st.session_state.last_hits, start=1):
+				metadata = hit.get("metadata") or {}
+				score = hit.get("score", 0)
+				document_id = metadata.get("document_id", "n/a")
+				chunk_index = metadata.get("chunk_index", "n/a")
+				content = str(hit.get("content", "")).strip()[:220]
+				st.markdown(f"**Hit {idx}** - score: `{score:.4f}` - doc: `{document_id}` - chunk: `{chunk_index}`")
+				st.caption(content or "(empty chunk)")
 
 	if st.button("Clear Chat", type="secondary", use_container_width=True):
 		st.session_state.chat_history = []
@@ -568,17 +631,6 @@ if st.session_state.last_error:
 
 # Render complete chat stream with all messages properly nested
 st.markdown(build_chat_html(), unsafe_allow_html=True)
-
-if st.session_state.last_hits:
-	with st.expander(f"Retrieval hits ({len(st.session_state.last_hits)})", expanded=False):
-		for idx, hit in enumerate(st.session_state.last_hits, start=1):
-			metadata = hit.get("metadata") or {}
-			score = hit.get("score", 0)
-			document_id = metadata.get("document_id", "n/a")
-			chunk_index = metadata.get("chunk_index", "n/a")
-			content = str(hit.get("content", "")).strip()[:320]
-			st.markdown(f"**Hit {idx}** - score: `{score:.4f}` - doc: `{document_id}` - chunk: `{chunk_index}`")
-			st.caption(content or "(empty chunk)")
 
 with st.form("chat_form", clear_on_submit=True):
 	input_col, send_col = st.columns([1, 0.14], gap="small")
@@ -601,6 +653,7 @@ if submitted:
 			conversation_status = st.empty()
 			conversation_id = ensure_conversation(
 				model_name,
+				selected_provider,
 				on_update=lambda payload: conversation_status.info(
 					f"Conversation status: {payload.get('status', 'preparing')}"
 				),
@@ -621,3 +674,5 @@ if submitted:
 		except Exception as exc:
 			st.session_state.last_error = str(exc)
 			st.error(f"Send failed: {exc}")
+			if selected_provider == "ollama" and "unavailable" in str(exc).lower():
+				st.info("Ollama is not reachable from backend. Start it with: docker-compose -f backend/docker-compose.yml --profile ollama up -d ollama")

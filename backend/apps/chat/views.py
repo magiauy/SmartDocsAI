@@ -2,7 +2,7 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.responses.builders import api_success
+from apps.core.responses.builders import api_error, api_success
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, ConversationStatusSerializer, MessageSerializer
@@ -59,4 +59,9 @@ class ConversationMessageView(APIView):
 
     def post(self, request, pk):
         result, status_code = MessageService().send_message(pk, request.data)
+        # Keep 409 as success payload so frontend can poll/read "ready_for_chat" gracefully.
+        if status_code == 409:
+            return Response(api_success(result), status=status_code)
+        if status_code >= 400:
+            return Response(api_error(result.get("message", "Request failed"), result), status=status_code)
         return Response(api_success(result), status=status_code)

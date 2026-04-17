@@ -29,14 +29,21 @@ class MessageService:
         user_message = Message.objects.create(conversation=conversation, role=Message.Role.USER, content=content)
         document_ids = list(conversation.documents.values_list("id", flat=True))
         hits = self.search_service.search(query=content, document_ids=document_ids, limit=getattr(settings, "RETRIEVAL_TOP_K", 5))
-        response = self.completion_service.generate(
-            provider=conversation.provider,
-            model=conversation.model,
-            prompt=content,
-            context_hits=hits,
-            chat_history=history,
-            system_prompt=conversation.system_prompt,
-        )
+        try:
+            response = self.completion_service.generate(
+                provider=conversation.provider,
+                model=conversation.model,
+                prompt=content,
+                context_hits=hits,
+                chat_history=history,
+                system_prompt=conversation.system_prompt,
+            )
+        except Exception as exc:
+            return {
+                "message": f"LLM provider '{conversation.provider}' is unavailable: {exc}",
+                "provider": conversation.provider,
+                "model": conversation.model,
+            }, status.HTTP_502_BAD_GATEWAY
         assistant_message = Message.objects.create(
             conversation=conversation,
             role=Message.Role.ASSISTANT,

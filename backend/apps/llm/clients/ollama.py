@@ -17,7 +17,16 @@ class OllamaClient:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{self.base_url}/api/generate",
-                json={"model": request.model or self.model, "prompt": request.prompt, "stream": False},
+                json={
+                    "model": request.model or self.model,
+                    "prompt": request.prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "num_ctx": 8192,
+                        "num_predict": 256,
+                    },
+                },
             )
             response.raise_for_status()
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
