@@ -1,3 +1,5 @@
+import time
+
 from rest_framework import status
 from django.conf import settings
 
@@ -28,7 +30,13 @@ class MessageService:
         history = self._get_chat_history(conversation)
         user_message = Message.objects.create(conversation=conversation, role=Message.Role.USER, content=content)
         document_ids = list(conversation.documents.values_list("id", flat=True))
-        hits = self.search_service.search(query=content, document_ids=document_ids, limit=getattr(settings, "RETRIEVAL_TOP_K", 5))
+        retrieval_started_at = time.perf_counter()
+        hits, retrieval_metrics = self.search_service.search_with_metrics(
+            query=content,
+            document_ids=document_ids,
+            limit=getattr(settings, "RETRIEVAL_TOP_K", 5),
+        )
+        retrieval_total_ms = int((time.perf_counter() - retrieval_started_at) * 1000)
         try:
             response = self.completion_service.generate(
                 provider=conversation.provider,
@@ -58,6 +66,20 @@ class MessageService:
         if self.memory_enabled:
             self.session_memory.append_turn(conversation.id, content, response["content"])
 
+        process_file_ms = self._resolve_process_file_ms(conversation)
+        generation_ms = int(response.get("latency_ms", 0) or 0)
+        embedding_ms = int(retrieval_metrics.get("embedding_ms", 0) or 0)
+        query_ms = int(retrieval_metrics.get("query_ms", 0) or 0)
+
+        latency_breakdown = {
+            "process_file_ms": process_file_ms,
+            "embedding_ms": embedding_ms,
+            "query_ms": query_ms,
+            "generation_ms": generation_ms,
+            "retrieval_total_ms": retrieval_total_ms,
+            "total_ms": process_file_ms + retrieval_total_ms + generation_ms,
+        }
+
         return {
             "user_message": {"id": user_message.id, "content": user_message.content},
             "assistant_message": {
@@ -67,8 +89,17 @@ class MessageService:
                 "model": assistant_message.model,
                 "latency_ms": assistant_message.latency_ms,
             },
+            "latency_breakdown": latency_breakdown,
             "hits": hits,
         }, status.HTTP_201_CREATED
+
+    def _resolve_process_file_ms(self, conversation) -> int:
+        document = conversation.documents.filter(processing_status="indexed").order_by("-updated_at").first()
+        if not document or not document.created_at or not document.updated_at:
+            return 0
+
+        elapsed = document.updated_at - document.created_at
+        return max(int(elapsed.total_seconds() * 1000), 0)
 
     def _get_chat_history(self, conversation):
         db_history = self._load_recent_history_from_db(conversation)

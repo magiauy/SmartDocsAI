@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 
 from qdrant_client import QdrantClient
@@ -58,12 +59,22 @@ class QdrantStore:
         }
 
     def search(self, query, document_ids, limit=5):
-        if not query or not document_ids:
-            return []
+        hits, _ = self.search_with_metrics(query=query, document_ids=document_ids, limit=limit)
+        return hits
 
+    def search_with_metrics(self, query, document_ids, limit=5):
+        if not query or not document_ids:
+            return [], {"embedding_ms": 0, "query_ms": 0, "total_ms": 0}
+
+        started_at = time.perf_counter()
         self._ensure_collection()
+
+        embedding_started_at = time.perf_counter()
         query_vector = self.embedding_service.embed_query(query)
+        embedding_ms = int((time.perf_counter() - embedding_started_at) * 1000)
+
         query_filter = self._build_document_filter(document_ids)
+        query_started_at = time.perf_counter()
         results = self.client.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
@@ -72,6 +83,7 @@ class QdrantStore:
             with_payload=True,
             with_vectors=False,
         )
+        query_ms = int((time.perf_counter() - query_started_at) * 1000)
 
         hits = []
         for result in results:
@@ -84,7 +96,11 @@ class QdrantStore:
                     "metadata": payload,
                 }
             )
-        return hits
+        return hits, {
+            "embedding_ms": embedding_ms,
+            "query_ms": query_ms,
+            "total_ms": int((time.perf_counter() - started_at) * 1000),
+        }
 
     def _ensure_collection(self):
         try:

@@ -21,8 +21,11 @@ def test_send_message_persists_user_and_assistant_messages(api_client, mocker):
     ConversationDocument.objects.create(conversation=conversation, document=document)
 
     mocker.patch(
-        "apps.chat.services.message_service.SearchService.search",
-        return_value=[{"content": "doc context", "score": 0.9, "metadata": {"document_id": document.id}}],
+        "apps.chat.services.message_service.SearchService.search_with_metrics",
+        return_value=(
+            [{"content": "doc context", "score": 0.9, "metadata": {"document_id": document.id}}],
+            {"embedding_ms": 2, "query_ms": 3, "total_ms": 5},
+        ),
     )
     mocker.patch(
         "apps.chat.services.message_service.CompletionService.generate",
@@ -46,6 +49,11 @@ def test_send_message_persists_user_and_assistant_messages(api_client, mocker):
     assert Message.objects.filter(conversation=conversation).count() == 2
     payload = response.json()["data"]
     assert payload["assistant_message"]["content"] == "assistant answer"
+    assert payload["assistant_message"]["model"] == "mock-1"
+    assert payload["assistant_message"]["latency_ms"] == 5
+    assert payload["latency_breakdown"]["embedding_ms"] == 2
+    assert payload["latency_breakdown"]["query_ms"] == 3
+    assert payload["latency_breakdown"]["generation_ms"] == 5
 
 
 @pytest.mark.django_db
@@ -113,8 +121,11 @@ def test_send_message_uses_in_memory_session_history(api_client, mocker):
     ConversationDocument.objects.create(conversation=conversation, document=document)
 
     mocker.patch(
-        "apps.chat.services.message_service.SearchService.search",
-        return_value=[{"content": "doc context", "score": 0.9, "metadata": {"document_id": document.id}}],
+        "apps.chat.services.message_service.SearchService.search_with_metrics",
+        return_value=(
+            [{"content": "doc context", "score": 0.9, "metadata": {"document_id": document.id}}],
+            {"embedding_ms": 2, "query_ms": 3, "total_ms": 5},
+        ),
     )
     completion_mock = mocker.patch(
         "apps.chat.services.message_service.CompletionService.generate",

@@ -79,6 +79,8 @@ def init_state() -> None:
 		st.session_state.last_error = ""
 	if "last_hits" not in st.session_state:
 		st.session_state.last_hits = []
+	if "last_latency_breakdown" not in st.session_state:
+		st.session_state.last_latency_breakdown = {}
 
 
 def register_uploaded_file(file_name: str, document_id: int | None = None) -> None:
@@ -637,6 +639,21 @@ with st.sidebar:
 	selected_provider, model_name = selected_option
 
 	if st.session_state.last_hits:
+		latency = st.session_state.last_latency_breakdown or {}
+		if latency:
+			st.markdown('<div class="sidebar-block"><strong>Latency Breakdown</strong></div>', unsafe_allow_html=True)
+			process_file_ms = int(latency.get("process_file_ms", 0) or 0)
+			embedding_ms = int(latency.get("embedding_ms", 0) or 0)
+			query_ms = int(latency.get("query_ms", 0) or 0)
+			generation_ms = int(latency.get("generation_ms", 0) or 0)
+			total_ms = int(latency.get("total_ms", process_file_ms + embedding_ms + query_ms + generation_ms) or 0)
+
+			st.caption(f"Process file: {process_file_ms} ms")
+			st.caption(f"Embedding: {embedding_ms} ms")
+			st.caption(f"Query: {query_ms} ms")
+			st.caption(f"Generation: {generation_ms} ms")
+			st.caption(f"Total: {total_ms} ms")
+
 		with st.expander(f"Retrieval hits ({len(st.session_state.last_hits)})", expanded=False):
 			for idx, hit in enumerate(st.session_state.last_hits, start=1):
 				metadata = hit.get("metadata") or {}
@@ -650,6 +667,7 @@ with st.sidebar:
 	if st.button("Clear Chat", type="secondary", use_container_width=True):
 		st.session_state.chat_history = []
 		st.session_state.last_hits = []
+		st.session_state.last_latency_breakdown = {}
 		st.session_state.last_error = ""
 		st.session_state.conversation_id = None
 		st.session_state.conversation_ready = False
@@ -698,8 +716,10 @@ if submitted:
 			if result.get("ready_for_chat") is False:
 				st.warning("Conversation is still preparing. Please wait a few seconds and send again.")
 				st.session_state.last_hits = []
+				st.session_state.last_latency_breakdown = {}
 				st.stop()
 			st.session_state.last_hits = result.get("hits", [])
+			st.session_state.last_latency_breakdown = result.get("latency_breakdown", {})
 			refresh_chat_history(conversation_id)
 			st.rerun()
 		except Exception as exc:
