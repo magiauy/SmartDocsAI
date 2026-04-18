@@ -174,7 +174,13 @@ def refresh_chat_history(conversation_id: int):
 	data = api_request("GET", f"/api/conversations/{conversation_id}/messages/")
 	messages = data.get("messages", [])
 	st.session_state.chat_history = [
-		{"role": message.get("role", "assistant"), "content": message.get("content", "")}
+		{
+			"role": message.get("role", "assistant"),
+			"content": message.get("content", ""),
+			"provider": message.get("provider", ""),
+			"model": message.get("model", ""),
+			"latency_ms": message.get("latency_ms", 0),
+		}
 		for message in messages
 	]
 
@@ -208,7 +214,23 @@ def build_chat_html() -> str:
 		if role == "user":
 			messages.append(f'<div class="chat-row user"><div class="chat-bubble user">{content}</div></div>')
 		else:
-			messages.append(f'<div class="chat-row assistant"><div class="chat-bubble assistant">{content}</div></div>')
+			model = str(item.get("model", "") or "").strip()
+			if not model:
+				model = str(item.get("provider", "") or "").strip()
+
+			latency_value = item.get("latency_ms")
+			latency_text = ""
+			if latency_value not in (None, ""):
+				try:
+					latency_text = f"{int(latency_value)} ms"
+				except (TypeError, ValueError):
+					latency_text = f"{latency_value} ms"
+
+			meta_parts = [part for part in (model, latency_text) if part]
+			meta_html = f'<div class="chat-meta">{" | ".join(html.escape(part) for part in meta_parts)}</div>' if meta_parts else ""
+			messages.append(
+				f'<div class="chat-row assistant"><div class="chat-bubble assistant">{content}{meta_html}</div></div>'
+			)
 
 	return '<div class="chat-stream">' + "".join(messages) + "</div>"
 
@@ -500,6 +522,15 @@ html, body, [class*="css"] {
 	color: var(--text-main);
 	border: 1px solid var(--muted-border);
 	border-radius: 4px 14px 14px 14px;
+}
+
+.chat-meta {
+	margin-top: 6px;
+	padding-top: 4px;
+	border-top: 1px dashed #D7DEE5;
+	font-size: 0.74rem;
+	font-weight: 600;
+	color: #5E6771;
 }
 
 .chat-empty {

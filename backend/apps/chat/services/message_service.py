@@ -60,7 +60,13 @@ class MessageService:
 
         return {
             "user_message": {"id": user_message.id, "content": user_message.content},
-            "assistant_message": {"id": assistant_message.id, "content": assistant_message.content},
+            "assistant_message": {
+                "id": assistant_message.id,
+                "content": assistant_message.content,
+                "provider": assistant_message.provider,
+                "model": assistant_message.model,
+                "latency_ms": assistant_message.latency_ms,
+            },
             "hits": hits,
         }, status.HTTP_201_CREATED
 
