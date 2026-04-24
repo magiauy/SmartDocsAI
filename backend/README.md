@@ -37,6 +37,16 @@
 	- `EMBEDDING_TIMEOUT_SECONDS`
 	- `EMBEDDING_GEMINI_TASK_TYPE_DOCUMENT`
 	- `EMBEDDING_GEMINI_TASK_TYPE_QUERY`
+- Retrieval backend can be selected with `RETRIEVAL_STORE_BACKEND`:
+	- `qdrant` (default)
+	- `neo4j` (Graph RAG base with chunk nodes + `NEXT` relationships + vector index)
+- Neo4j retrieval config options:
+	- `NEO4J_URI`
+	- `NEO4J_USER`
+	- `NEO4J_PASSWORD`
+	- `NEO4J_DATABASE`
+	- `NEO4J_VECTOR_INDEX_NAME`
+	- `NEO4J_VECTOR_SIMILARITY` (`cosine` or `euclidean`)
 - Retrieval tuning is configurable with `CHUNK_SIZE`, `CHUNK_OVERLAP`, and `RETRIEVAL_TOP_K`.
 - Chat session window is configurable with `SESSION_MEMORY_MAX_TURNS`.
 

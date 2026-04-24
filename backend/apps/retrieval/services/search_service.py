@@ -3,7 +3,7 @@ import time
 
 from django.conf import settings
 
-from apps.retrieval.vectorstores.qdrant_store import QdrantStore
+from apps.retrieval.vectorstores.factory import get_retrieval_store
 
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class SearchService:
     def __init__(self, adapter=None):
-        self.adapter = adapter or QdrantStore(settings)
+        self.adapter = adapter or get_retrieval_store(settings)
 
     def search(self, query, document_ids, limit=None):
         hits, _ = self.search_with_metrics(query=query, document_ids=document_ids, limit=limit)

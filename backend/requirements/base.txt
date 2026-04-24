@@ -4,6 +4,7 @@ mysqlclient==2.2.7
 celery==5.5.3
 redis==6.4.0
 qdrant-client==1.15.1
+neo4j==5.28.1
 langchain==0.3.27
 langchain-qdrant==0.2.1
 pypdf==5.4.0

@@ -184,6 +184,8 @@ def refresh_chat_history(conversation_id: int):
 			"latency_ms": message.get("latency_ms", 0),
 		}
 		for message in messages
+		
+		
 	]
 
 

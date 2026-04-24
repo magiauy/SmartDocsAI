@@ -15,6 +15,7 @@ services:
     depends_on:
       - redis
       - qdrant
+      - neo4j
     
 
 
@@ -32,6 +33,7 @@ services:
     depends_on:
       - redis
       - qdrant
+      - neo4j
 
   redis:
     image: redis:7.4-alpine
@@ -45,6 +47,22 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+
+  neo4j:
+    image: neo4j:5.26
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/neo4jpassword}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $${NEO4J_AUTH#*/} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   ollama:
     image: ollama/ollama:latest
@@ -69,5 +87,7 @@ services:
 
 volumes:
   qdrant_storage:
+  neo4j_data:
+  neo4j_logs:
   ollama_storage:
   mysql_data:
